@@ -541,6 +541,7 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
             "align_input_affine_type": align_input_affine_type,
             "ms_band_sep": ms_band_sep_cfg,
             "ms_group_align": group_align_cfg,
+            "eemsa": eemsa_cfg,
             "fusion_d_model": fusion_d_model,
             "fusion_nhead": fusion_nhead,
             "fusion_block_exp": fusion_block_exp,

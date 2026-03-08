@@ -299,6 +299,56 @@ def _normalize_output_merge(
     raise TypeError(f"Unsupported output_merge type: {type(output_merge)}")
 
 
+def _select_eemsa_cfg(eemsa: Mapping[str, Any] | None, stream: str) -> Dict[str, Any] | None:
+    if eemsa is None:
+        return None
+    if not isinstance(eemsa, Mapping):
+        if hasattr(eemsa, "items"):
+            return {k: v for k, v in eemsa.items()}  # type: ignore[return-value]
+        raise TypeError(f"Unsupported EEMSA config type: {type(eemsa)}")
+
+    # Shared form:
+    # backbone_eemsa:
+    #   enabled: true
+    #   ...
+    shared_keys = {
+        "enabled",
+        "enable",
+        "mode",
+        "locations",
+        "location",
+        "ratio",
+        "min_channels",
+        "edge_dw_kernel_size",
+        "edge_use_pointwise",
+        "ema_groups",
+        "ema_conv_kernel_size",
+        "ema_use_group_norm",
+        "fusion",
+        "norm",
+        "act",
+        "use_eca",
+        "eca_kernel_size",
+        "alpha_init",
+    }
+    if any(k in eemsa for k in shared_keys):
+        return dict(eemsa)
+
+    # Per-stream form:
+    # backbone_eemsa:
+    #   rgb: {...}
+    #   ms: {...}
+    #   default: {...}
+    selected = eemsa.get(stream, eemsa.get("default", None))
+    if selected is None:
+        return None
+    if isinstance(selected, Mapping):
+        return dict(selected)
+    if hasattr(selected, "items"):
+        return {k: v for k, v in selected.items()}  # type: ignore[return-value]
+    raise TypeError(f"Unsupported EEMSA config for stream={stream}: {type(selected)}")
+
+
 def _normalize_align_ref_mode(mode: str) -> str:
     # Normalize alignment reference modes for MS alignment modules.
     mode_norm = str(mode).strip().lower()
@@ -386,6 +436,7 @@ class HGNetv2DualStream(nn.Module):
         align_input_affine_type: str = "affine",
         ms_band_sep: Mapping[str, Any] | None = None,
         ms_group_align: Mapping[str, Any] | None = None,
+        eemsa: Mapping[str, Any] | None = None,
         fusion_d_model: int = 128,
         fusion_nhead: int = 8,
         fusion_block_exp: int = 4,
@@ -523,6 +574,8 @@ class HGNetv2DualStream(nn.Module):
 
         self.rgb_backbone: HGNetv2 | None = None
         self.ms_backbone: HGNetv2 | None = None
+        eemsa_cfg_rgb = _select_eemsa_cfg(eemsa, "rgb")
+        eemsa_cfg_ms = _select_eemsa_cfg(eemsa, "ms")
 
         # Build independent HGNetv2 branches for each modality (RGB/MS).
         if self.rgb_in_chs > 0:
@@ -536,6 +589,7 @@ class HGNetv2DualStream(nn.Module):
                 freeze_norm=freeze_norm,
                 pretrained=pretrained,
                 local_model_dir=local_model_dir,
+                eemsa=eemsa_cfg_rgb,
             )
         if self.ms_in_chs > 0:
             self.ms_backbone = HGNetv2(
@@ -548,6 +602,7 @@ class HGNetv2DualStream(nn.Module):
                 freeze_norm=freeze_norm,
                 pretrained=pretrained,
                 local_model_dir=local_model_dir,
+                eemsa=eemsa_cfg_ms,
             )
 
         # Optional: band-separated MS stem + (true) groupwise alignment at C2, before any cross-band fusion.
@@ -1218,6 +1273,27 @@ class HGNetv2DualStream(nn.Module):
             return self.concat_projs[key](torch.cat([rgb, ms], dim=1))
         raise ValueError(f"Unsupported output_merge for stage idx {stage_i}: {mode}")
 
+    @staticmethod
+    def _apply_eemsa_stem(feat: torch.Tensor, backbone: HGNetv2 | None) -> torch.Tensor:
+        if backbone is None:
+            return feat
+        eemsa_stem = getattr(backbone, "eemsa_stem", None)
+        if eemsa_stem is None:
+            return feat
+        return eemsa_stem(feat)
+
+    @staticmethod
+    def _apply_eemsa_stage(feat: torch.Tensor, backbone: HGNetv2 | None, idx: int) -> torch.Tensor:
+        if backbone is None:
+            return feat
+        modules = getattr(backbone, "eemsa_stage_modules", None)
+        if modules is None:
+            return feat
+        key = str(idx)
+        if key not in modules:
+            return feat
+        return modules[key](feat)  # type: ignore[index]
+
     def _build_ms_internal_ref(
         self,
         ms: torch.Tensor,
@@ -1484,6 +1560,7 @@ class HGNetv2DualStream(nn.Module):
         if self.rgb_backbone is not None:
             assert rgb is not None
             rgb = self.rgb_backbone.stem(rgb)
+            rgb = self._apply_eemsa_stem(rgb, self.rgb_backbone)
         if self.ms_backbone is not None:
             assert ms is not None
             if self.ms_band_sep_enabled and self.ms_band_sep_stem is not None:
@@ -1498,6 +1575,7 @@ class HGNetv2DualStream(nn.Module):
                     ms = out[0] if isinstance(out, tuple) else out
             else:
                 ms = self.ms_backbone.stem(ms)
+            ms = self._apply_eemsa_stem(ms, self.ms_backbone)
 
         ret_stage_idx: list[int] = []
         ret_rgb: list[torch.Tensor | None] = []
@@ -1556,6 +1634,7 @@ class HGNetv2DualStream(nn.Module):
 
             if rgb_stage is not None:
                 rgb = rgb_stage.blocks(rgb)  # type: ignore[arg-type]
+                rgb = self._apply_eemsa_stage(rgb, self.rgb_backbone, idx)
             if ms_stage is not None:
                 ms = ms_stage.blocks(ms)  # type: ignore[arg-type]
                 if self.ms_group_align_position == "post_block":
@@ -1565,6 +1644,7 @@ class HGNetv2DualStream(nn.Module):
                 key = str(idx)
                 if ms is not None and key in self.ms_attn_post:
                     ms = self.ms_attn_post[key](ms)
+                ms = self._apply_eemsa_stage(ms, self.ms_backbone, idx)
 
             if (
                 self.fusion_position == "post_block"
