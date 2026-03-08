@@ -1,0 +1,69 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260115_3cls
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_c2former_postblock_add_wbadd_c3c4c5_msbandsep_c2align_infonce_reg
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: c2former
+    # 在每个 stage 的 blocks 之后做融合（更接近论文/原始实现：stage_end fusion）。
+    position: post_block
+    d_model: 128
+    nhead: 8
+    fuse_stage_idx: [c3, c4, c5]
+    groups: 4
+    cca_stride: 3
+    offset_range_factor: 2
+    no_offset: false
+    attn_drop: 0.0
+    proj_drop: 0.0
+    offset_on: ms
+
+  # Scheme-1: MS band-separated stem (no cross-band mixing before C2) + true 7-band groupwise alignment at C2.
+  backbone_ms_band_sep:
+    enabled: true
+    embed_channels: 16
+    embed_use_bn: true
+    align:
+      enabled: true
+      ref_mode: spatial_weighted
+      ref_detach: true
+      num_iters: 1
+      num_keypoints: 9
+      offset_enabled: true
+      offset_scale: 3.0
+      attention_norm: softmax
+      padding_mode: border
+      align_corners: true
+      loss_type: infonce
+      loss_downsample: 0.5
+      nce_patch_size: 5
+      nce_num_patches: 64
+      nce_tau: 0.2
+      loss_weight: 0.02
+      loss_offset_weight: 0.01
+      loss_attn_entropy_weight: 0.001
+
+train:
+  # batch_size: 8
+  batch_size: 8
+  epochs: 120
+  num_classes: 3
+  # Align to RT-DETRv4-M recipe.
+  lr: 0.0004
+  weight_decay: 0.0001
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.00004
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 49
+  no_aug_epoch: 12

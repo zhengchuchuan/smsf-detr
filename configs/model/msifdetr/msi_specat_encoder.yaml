@@ -1,0 +1,14 @@
+# @package _global_
+# MSI 分支使用 SPECAT-style Encoder Backbone（encoder-only, attention_type=base）的示例配置
+
+model:
+  msi_backbone: specat_encoder
+
+  # SpecatMSBackbone 超参
+  specat_base_dim: 64
+  specat_stage: 3
+  specat_num_blocks: [2, 2, 2, 2]   # 3 个 encoder stage + bottleneck
+  specat_dim_head: null             # 默认跟随 specat_base_dim
+
+  # 其余融合/训练相关参数由 task 侧覆盖
+

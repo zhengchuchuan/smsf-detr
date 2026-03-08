@@ -1,0 +1,28 @@
+# @package _global_
+
+model:
+  model_name: rtmsfdetr
+  # 便于区分输出目录（启用 teacher/distill）
+  model_alias: rtv4_hgnetv2_s_distill
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_s_coco.yml
+  # RT-DETRv4 官方预训练（会自动跳过分类头等 shape 不匹配参数）
+  pretrain_weights: weights/rtdetr/RTv4-S-hgnet.pth
+
+  # 启用 RT-DETRv4 DINOv3 Teacher 蒸馏（需要本地 DINOv3 repo + 权重文件）
+  disable_distill: false
+  teacher_repo_path: third_party/dinov3
+  teacher_weights_path: weights/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+
+  # HGNetv2 预训练默认关闭（避免网络依赖）；如有本地权重可手动打开并指定目录
+  hgnet_pretrained: false
+  hgnet_local_model_dir: null
+
+  # 输入反归一化（更贴近 RT-DETRv4 原始实现）
+  input_denormalize: true
+  clamp_after_denormalize: true
+
+  # Instance segmentation (off by default)
+  segmentation_head: false
+  mask_feature_level: 0
+  mask_downsample_ratio: 8
+  mask_aux_loss: false

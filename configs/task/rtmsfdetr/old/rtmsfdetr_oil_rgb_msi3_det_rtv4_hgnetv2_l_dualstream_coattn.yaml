@@ -1,0 +1,51 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/rtmsfdetr/rtv4_hgnetv2_l
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+data:
+  use_rgb_input: true
+  use_msi_input: true
+  ms_expected_channels: 3
+  ms_input_channels: 3
+
+model:
+  model_alias: rtv4_hgnetv2_l_dualstream_coattn_rtv4l_recipe
+  # 双流骨干：RGB/MSI 各走一条 HGNetv2 分支，在 backbone 特征层做融合
+  dual_stream_backbone: true
+  # backbone 输出 merge：wavg/add/concat1x1 等（此配置用 wavg 做等权融合）
+  backbone_output_merge: wavg
+  backbone_fusion:
+    # 融合模块：Co-Attention（跨模态注意力），在指定 stage 上做 cross-attn 后残差回写
+    type: coattention
+    # 显式指定融合层级，便于复现/消融（默认通常也是 C3/C4/C5）
+    fuse_stage_idx: ["c3", "c4", "c5"]
+    d_model: 128
+    nhead: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    kv_stride:
+      # key/value 的下采样倍率（控制注意力开销）
+      c3: 8
+      c4: 4
+      c5: 2
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  # 对齐 RGB-only 的 RTv4-L 原始 recipe，方便做公平对比
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8

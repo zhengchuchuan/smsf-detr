@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_20260101_all_data
+  - /model/rtmsfdetr/rtv4_hgnetv2_s_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+train:
+  batch_size: 4
+  epochs: 120
+  num_classes: 4
+  # 训练 epoch=50 时的建议 flat-cosine（避免 flat/no_aug 区间重叠）
+  flat_epoch: 29
+  no_aug_epoch: 8

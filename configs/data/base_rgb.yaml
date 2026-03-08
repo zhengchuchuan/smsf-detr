@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - /data/base_common
+  - _self_
+
+data:
+  dataset_file: coco_rgb
+  use_rgb_input: true
+  use_msi_input: false
+  rgb_input_channels: 3
+  ms_input_channels: 0
+  channel_splits: [3, 0]
+  rgb_normalize_mode: per_channel_minmax

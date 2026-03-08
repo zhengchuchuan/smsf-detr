@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - /data/HOD3K_rgb_msi
+  - _self_
+
+data:
+  # 验证与测试都指向 test split
+  val_split: test
+  test_split: test

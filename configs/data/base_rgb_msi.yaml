@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - /data/base_common
+  - _self_
+
+data:
+  dataset_file: coco_rgb_msi
+  use_rgb_input: true
+  use_msi_input: true
+  rgb_input_channels: 3
+  rgb_normalize_mode: per_channel_minmax
+  ms_normalize_mode: per_channel_minmax
+  ms_fixed_scale: 255.0
+  ms_center_to_rgb_range: false
+  ms_stats_cache: null
+  ms_stats_max_images: null
+  rgb_manifest: null
+  ms_manifest: null
+  manifest_key_mode: stem
+  ms_color_jitter_strength: 0.0
+  dual_stream_output: false
+  ms_disable_random_flip: false
+  ms_flip_prob: 0.5

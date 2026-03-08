@@ -1,0 +1,30 @@
+# @package _global_
+# 基于 `msifdetr_coco_rgb_det_small.yaml` 的对照（尽量最小改动）：
+# - 仍使用 coco_rgb 数据集与原 coco transforms（ImageNet normalize + RandomSelect 增广）
+# - 仅把 pretrain_weights / 学习率策略等对齐到你当前 best（cosine + lr=5e-5）
+#
+# 用途：判断“效果变好”是否主要来自更强的预训练与训练超参，而不是数据管线本身。
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+model:
+  load_dinov2_weights: false
+
+train:
+  epochs: 120
+  # 对齐 best 的有效 batch=4
+  batch_size: 2
+  grad_accum_steps: 2
+
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

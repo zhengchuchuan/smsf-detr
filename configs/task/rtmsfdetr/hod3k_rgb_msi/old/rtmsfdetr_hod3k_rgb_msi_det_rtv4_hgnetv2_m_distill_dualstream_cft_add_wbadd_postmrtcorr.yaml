@@ -1,0 +1,54 @@
+# @package _global_
+
+defaults:
+  - /data/HOD3K_rgb_msi
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_cft_add_wbadd_postmrtcorr
+  dual_stream_backbone: true
+  backbone_output_merge: add
+
+  # Stage fusion inside the dual-stream HGNetv2 backbone.
+  backbone_fusion:
+    type: cft
+    d_model: 128
+    nhead: 8
+    n_layer: 8
+    block_exp: 4
+    vert_anchors: 8
+    horz_anchors: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    # CFT write-back merge inside GPTFusion2D.
+    writeback_merge: add
+
+  # MRT-style corr fusion on (C3/C4/C5) from both streams before entering HybridEncoder.
+  # Set `type: none` to disable and fall back to `backbone_output_merge`.
+  backbone_post_fusion:
+    type: mrt
+    d_model: 128
+    num_stages: 2
+    fused_channels: 64
+    norm: gn
+    use_pos_encoding: true
+
+train:
+  batch_size: 16
+  img_size: 512
+  epochs: 50
+  num_classes: 3
+  lr: 0.00005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

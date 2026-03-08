@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260115
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_c2former_add_wbadd_c3c4c5_alignc2c3_infonce_p5n64
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: c2former
+    d_model: 128
+    nhead: 8
+    fuse_stage_idx: [c3, c4, c5]
+    groups: 4
+    cca_stride: 3
+    offset_range_factor: 2
+    no_offset: false
+    attn_drop: 0.0
+    proj_drop: 0.0
+    offset_on: ms
+  backbone_align:
+    enabled: true
+    stage_idx: [c2, c3]
+    loss_type: infonce
+    loss_weight: 0.1
+    nce_patch_size: 5
+    nce_num_patches: 64
+    nce_tau: 0.2
+
+train:
+  batch_size: 12
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8

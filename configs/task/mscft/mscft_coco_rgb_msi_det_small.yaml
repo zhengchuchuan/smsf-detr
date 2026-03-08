@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/mscft/yolov5s
+  - /runtime/default
+  - /train/mscft_default
+  - _self_
+
+model:
+  model_name: mscft
+  model_alias: mscft
+  # COCO 评估建议使用更低阈值，避免过早过滤低分框导致召回偏低
+  conf_thres: 0.001
+
+data:
+  # 使用 MSCFT/YOLO 风格训练集管线（验证仍走 COCO 评估流）
+  loader: mscft_yolo
+  # 对齐 YOLO 预训练的 0-1 线性归一化，并中心化 MSI
+  use_yolo_norm: true
+
+train:
+  epochs: 120
+  batch_size: 32
+  metric_charts:
+    samples:
+      score_threshold: 0.05
+
+trainer:
+  _target_: engines.trainer.mscft_trainer.MscftTrainer

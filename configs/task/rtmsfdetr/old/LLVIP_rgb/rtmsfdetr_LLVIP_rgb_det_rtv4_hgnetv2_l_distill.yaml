@@ -1,0 +1,36 @@
+# @package _global_
+
+defaults:
+  - /data/LLVIP_rgb
+  - /model/rtmsfdetr/rtv4_hgnetv2_l_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+train:
+  # L/X 模型通常显存压力更大，默认 batch_size=1（可按显存调整）
+  batch_size: 16
+  epochs: 120
+  # LLVIP COCO 标注仅包含 person 1 类（不含 background）
+  num_classes: 1
+  # 对齐 RTv4-L 原始 recipe
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    # 注意：这里必须用 `(?:norm|bn)` 包起来；否则 `(?!.*norm|bn)` 会错误放行 name 含 bn 的参数。
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  # RTv4-L 原始配置（flat-cosine）
+  flat_epoch: 29
+  no_aug_epoch: 8
+
+  # 仅影响“样例可视化”的阈值，便于观察是否开始学习（不影响 COCO mAP 评测）
+  metric_charts:
+    samples:
+      score_threshold: 0.05
+
+runtime:
+  device_ids: [3]

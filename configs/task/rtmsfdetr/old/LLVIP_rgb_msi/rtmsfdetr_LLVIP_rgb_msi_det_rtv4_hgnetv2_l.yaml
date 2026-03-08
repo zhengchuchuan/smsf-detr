@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - /data/LLVIP_rgb_msi
+  - /model/rtmsfdetr/rtv4_hgnetv2_l
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+train:
+  batch_size: 16
+  epochs: 30
+  num_classes: 1
+  # 训练 epoch=50 时的建议 flat-cosine（避免 flat/no_aug 区间重叠）
+  flat_epoch: 29
+  no_aug_epoch: 8
+
+  # 仅影响“样例可视化”的阈值，便于观察是否开始学习（不影响 COCO mAP 评测）
+  metric_charts:
+    samples:
+      score_threshold: 0.05
+
+runtime:
+  device_ids: [0]

@@ -1,0 +1,26 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb_msi
+  - _self_
+
+data:
+  # Same dataset as oil_rgb_msi_20260115, but drop the rare "photovoltaic" class.
+  dataset_name: oil_rgb_msi_20260115_3cls
+  dataset_dir: data/oil_20260115
+  val_split: val
+  # Used for COCO category remap / evaluation mapping / visualization.
+  class_names: ["oil", "building", "machine"]
+  ms_input_channels: 7
+  channel_splits: [3, 7]
+  ms_expected_channels: 7
+  ms_suffix: ".tif"
+  # RGB: ImageNet mean/std normalization (after F.to_tensor scales to [0,1]).
+  rgb_normalize_mode: imagenet
+  # MSI: fixed_scale does (ms / ms_fixed_scale) and clamps to [0,1].
+  ms_normalize_mode: fixed_scale
+  # 16-bit MSI TIF full scale.
+  ms_fixed_scale: 65535.0
+  # Keep COCO-style shared geometric augmentation (sync on RGB + MSI).
+  shared_transform: coco
+

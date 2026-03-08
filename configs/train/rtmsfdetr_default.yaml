@@ -1,0 +1,139 @@
+# @package _global_
+
+train:
+  grad_accum_steps: 1
+  amp: true
+  batch_size: 4
+  epochs: 120
+  num_workers: 2
+
+  # Optimizer（BaseTrainer 默认 AdamW）
+  optimizer: adamw
+  lr: 0.0004
+  weight_decay: 0.0001
+  betas: [0.9, 0.999]
+  momentum: 0.9
+  # RT-DETRv4 原始 recipe：backbone 更小 lr；norm/bn 不做 weight decay
+  optimizer_param_groups:
+    # 注意：dual-stream co-attn backbone 内引入了 LayerNorm（name 含 norm），
+    # 若这里不排除 norm，会与下方 norm/bn 分组产生重叠匹配（RtmsfDetrTrainer 会显式报错）。
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.0002
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+
+  # Scheduler：对齐 RT-DETRv4 flat-cosine 习惯用法
+  lr_scheduler: flatcosine
+  lr_gamma: 0.5
+  # warmup_iter 以“迭代”为单位；小数据集(steps/epoch 少)时会被拉成很多 epoch，
+  # 造成前期学习率过小、mAP 长时间为 0。RtmsfDetrTrainer 会按 warmup_max_epochs 自动裁剪。
+  warmup_iter: 200
+  warmup_max_epochs: 2
+  flat_epoch: 64
+  no_aug_epoch: 12
+  # BaseTrainer 内置 warmup_epochs 需关闭，避免与 warmup_iter 重叠
+  warmup_epochs: 0
+
+  # Instance segmentation loss knobs (effective when model.segmentation_head=true)
+  segmentation_head: false
+  mask_point_sample_ratio: 16
+  mask_ce_loss_coef: 5.0
+  mask_dice_loss_coef: 5.0
+
+  clip_max_norm: 0.1
+  dont_save_weights: false
+  checkpoint_interval: 10
+  keep_only_best_and_last: true
+  # 训练结束后自动在 test split 上评测一次（用于最终汇报；可通过 --opts train.run_test_after_train=false 关闭）
+  run_test_after_train: true
+  # best/last/auto/none 或显式 checkpoint 路径（相对 output_dir）
+  test_after_train_ckpt: best
+  # best 权重选择策略：默认按 COCO 指标加权选择（越大越好）
+  best_monitor: fitness   # best_metric_weights 非空时会被忽略
+  best_mode: max          # auto/min/max；auto 会对 loss 走 min、对其它指标走 max
+  best_start_epoch: 0     # 从第 N 个 epoch 开始参与 best 判定（用于跳过前期波动）
+  best_eps: 1.0e-9        # 判定“更优”的数值阈值
+  best_fallback_to_val_loss: false  # 指标缺失时不回退，避免与加权分数混用
+  # fitness = 0.1 * Precision + 0.1 * Recall + 0.5 * mAP@0.5 + 0.3 * mAP@0.5:0.95
+  best_metric_weights: {precision: 0.1, recall: 0.1, map50: 0.5, map50_95: 0.3}
+  seed: 42
+  resume: ''
+  start_epoch: 0
+
+  # EMA（可按需关闭）
+  use_ema: true
+  ema_decay: 0.9999
+  ema_tau: 0
+
+  wandb: false
+  save_metrics_csv: true
+  metrics_csv_name: metrics.csv
+
+  # 打印频率
+  print_freq: 50
+  val_print_freq: 50
+
+  # 指标可视化（默认启用新增图表）
+  metric_charts:
+    # 条形图显示具体值（类别过多时自动不标注）
+    annotate_bars: true
+    max_annotate_classes: 20
+    # per-class 指标图中包含 all 行
+    include_all_in_per_class: true
+    # 指标取点方式：f1（YOLO 风格，取最佳 F1 点）/ threshold（固定阈值）
+    score_select: f1
+    score_threshold: 0.5
+    # （可选）overall_metrics.png 里只显示指定指标；不配置则显示全部（含 AP_s/AP_m/AP_l/Score Thr）
+    # overall_metrics_include: [precision, recall, f1, map50, map50_95]
+    # 新增：数据分布统计图（类别数量 + small/medium/large 占比）
+    dataset:
+      enabled: true
+      split: train
+      prefix: dataset
+      small_thr: 32
+      medium_thr: 96
+      max_annotate_classes: 60
+      annotate: true
+    # YOLO 风格标签分布图（labels.jpg / labels_correlogram.jpg）
+    yolo_labels:
+      enabled: true
+      split: train   # train/val/test/all
+      save_subdir: metric_charts
+      max_points: 20000
+      seed: 0
+      extra:
+        enabled: true
+        filename: labels_extra.jpg
+        bins: 60
+        max_boxes: 200000
+      per_class:
+        enabled: true
+        top_k: 16
+        bins: 50
+        max_boxes_per_class: 20000
+        centers_filename: labels_centers_topk.jpg
+        wh_filename: labels_wh_topk.jpg
+      cooccurrence:
+        enabled: true
+        metric: jaccard   # jaccard/count/p(j|i)
+        top_k: 30
+        annotate: false
+        max_annotate_classes: 20
+        filename: labels_cooccurrence.jpg
+    # 新增：推理 profile（FPS/延迟/参数量）
+    inference:
+      enabled: true
+      warmup_batches: 5
+      max_batches: 50
+      include_postprocess: true
+      include_loss: false
+      include_flops: true
+    # 新增：验证样例可视化（GT+Pred 叠加）
+    samples:
+      enabled: true
+      num_samples: 8
+      score_threshold: 0.3
+      max_dets: 50
+    # 新增：instance segm 指标图（segmentation_head=true 时生效）
+    segm:
+      enabled: true

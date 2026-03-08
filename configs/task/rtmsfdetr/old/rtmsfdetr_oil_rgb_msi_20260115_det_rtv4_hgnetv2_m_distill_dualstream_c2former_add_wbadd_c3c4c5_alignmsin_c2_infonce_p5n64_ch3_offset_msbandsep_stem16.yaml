@@ -1,0 +1,66 @@
+# @package _global_
+# based on: rtmsfdetr_oil_rgb_msi_20260115_det_rtv4_hgnetv2_m_distill_dualstream_c2former_add_wbadd_c3c4c5_alignmsin_c2_infonce_p5n64_ch3_offset(900-785).yaml
+# exp: enable MS band-separated stem (no cross-band fusion before stride=4), keep the original C2 alignmsin module.
+
+defaults:
+  - /data/oil_rgb_msi_20260115
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_c2former_add_wbadd_c3c4c5_alignmsin_c2_infonce_p5n64_ch3_offset_msbandsep_stem16
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: c2former
+    d_model: 128
+    nhead: 8
+    fuse_stage_idx: [c3, c4, c5]
+    groups: 4
+    cca_stride: 3
+    offset_range_factor: 2
+    no_offset: false
+    attn_drop: 0.0
+    proj_drop: 0.0
+    offset_on: ms
+
+  # New: MS stem without cross-band fusion before C2 (stride=4).
+  # This experiment does NOT add extra alignment here (alignmsin stays at C2 via backbone_align below).
+  backbone_ms_band_sep:
+    enabled: true
+    embed_channels: 16
+    embed_use_bn: true
+
+  # Original C2 alignmsin config (kept for a fair comparison).
+  backbone_align:
+    enabled: true
+    stage_idx: [c2]
+    position: pre_block
+    loss_weight: 0.05
+    ref_mode: ms_channel
+    ref_channel: 3
+    offset_enabled: true
+    affine_enabled: false
+    loss_type: infonce
+    nce_patch_size: 5
+    nce_num_patches: 64
+    nce_tau: 0.2
+    loss_downsample: 0.5
+
+train:
+  batch_size: 12
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

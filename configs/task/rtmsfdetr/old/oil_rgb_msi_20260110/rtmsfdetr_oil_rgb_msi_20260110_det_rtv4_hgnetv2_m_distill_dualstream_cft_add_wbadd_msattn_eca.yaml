@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260110
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_dualstream_cft_add_wbadd_msattn_eca
+  dual_stream_backbone: true
+  backbone_output_merge: add
+
+  # MS branch lightweight channel attention (applied after each stage downsample, before fusion/blocks).
+  ms_channel_attn: eca        # none|eca|se|ese
+  ms_channel_attn_position: pre_fuse  # pre_fuse|post_block|both
+  ms_channel_attn_stage_idx: [1, 2, 3]  # stage idx: 0..3 (C2..C5); default=fuse_stage_idx when omitted
+  ms_eca_kernel_size: null    # null=auto, or odd int (e.g. 3/5/7)
+
+  backbone_fusion:
+    type: cft
+    d_model: 128
+    nhead: 8
+    n_layer: 8
+    block_exp: 4
+    vert_anchors: 8
+    horz_anchors: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    # CFT write-back merge inside GPTFusion2D.
+    writeback_merge: add
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

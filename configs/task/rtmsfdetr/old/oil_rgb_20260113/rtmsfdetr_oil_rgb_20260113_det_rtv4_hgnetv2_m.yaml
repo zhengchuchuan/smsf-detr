@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_20260113
+  - /model/rtmsfdetr/rtv4_hgnetv2_m
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+train:
+  model_alias: rtv4_hgnetv2
+  # L/X 模型通常显存压力更大，默认 batch_size=1（可按显存调整）
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  # 对齐 RTv4-L 原始 recipe（开启 distill 时请确保本地 DINOv3 repo + 权重已配置）
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  # RTv4-L 原始配置（flat-cosine）
+  flat_epoch: 29
+  no_aug_epoch: 8

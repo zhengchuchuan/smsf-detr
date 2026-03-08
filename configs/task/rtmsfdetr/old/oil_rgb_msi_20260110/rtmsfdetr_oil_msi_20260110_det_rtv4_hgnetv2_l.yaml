@@ -1,0 +1,37 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260110
+  - /model/rtmsfdetr/rtv4_hgnetv2_l
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+# 仅使用 MSI（多光谱）输入，并截取 TIF 中“前 3 个波段”作为 3 通道输入
+data:
+  use_rgb_input: false
+  use_msi_input: true
+  ms_expected_channels: 7
+  ms_input_channels: 7
+
+model:
+  model_alias: rtv4_hgnetv2_l_msi
+  # 单流输入：MSI(3ch) 直接作为 backbone 输入（避免 dual-stream 期望 RGB+MSI 两路）
+  dual_stream_backbone: false
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  # 对齐 RGB-only 的 RTv4-L 原始 recipe，方便做公平对比
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

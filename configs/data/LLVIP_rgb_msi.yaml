@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb_msi
+  - _self_
+
+data:
+  dataset_name: LLVIP_rgb_msi
+  dataset_dir: data/LLVIP
+  # 类别（COCO/VOC 标注里不需要显式提供 background 类别；训练时 background/no-object 由模型内部处理）
+  # LLVIP COCO 标注仅包含 1 个前景类别：person（category_id=1）。
+  class_names: ["person"]
+  ms_input_channels: 1
+  channel_splits: [3, 1]
+  ms_expected_channels: 1
+  ms_suffix: ".jpg"

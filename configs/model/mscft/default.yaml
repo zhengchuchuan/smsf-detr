@@ -1,0 +1,13 @@
+# @package _global_
+
+# MSCFT YOLO+CFT 模型配置（迁移自 third_party/mscft）
+model:
+  model_name: mscft
+  model_alias: mscft
+  model_cfg: engines/models/mscft/transformer/yolov5l_fusion_transformer_FLIR.yaml
+  hyp: engines/models/mscft/hyp.scratch.yaml
+  # solid+liquid -> oil
+  num_classes: 4
+  input_channels: 10   # 默认 RGB(3)+MSI(7)
+  conf_thres: 0.25
+  iou_thres: 0.45

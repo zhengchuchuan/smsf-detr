@@ -1,0 +1,65 @@
+# @package _global_
+
+defaults:
+  - /data/HOD3K_rgb_msi
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_cft_add_wbadd
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: cft
+    d_model: 128
+    nhead: 8
+    n_layer: 8
+    block_exp: 4
+    vert_anchors: 8
+    horz_anchors: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    # CFT write-back merge inside GPTFusion2D.
+    writeback_merge: add
+
+data:
+  # 对齐 third_party/S2ADet 的数据增强逻辑（mosaic + hsv + flip）
+  shared_transform: s2adet
+  # YOLOv5 默认 padding 填充值
+  letterbox_fill_value: 114
+  letterbox_ms_fill_value: 114
+  # YOLOv5 hyp.scratch.yaml
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.5
+  shear: 0.0
+  perspective: 0.0
+  flipud: 0.0
+  fliplr: 0.5
+  mosaic: 1.0
+  # 与 S2ADet 一致：按 255 线性归一化（而非 per-image minmax）
+  rgb_normalize_mode: linear
+  ms_normalize_mode: linear
+  ms_fixed_scale: 255.0
+
+train:
+  batch_size: 16
+  img_size: 512
+  epochs: 50
+  num_classes: 3
+  lr: 0.00005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

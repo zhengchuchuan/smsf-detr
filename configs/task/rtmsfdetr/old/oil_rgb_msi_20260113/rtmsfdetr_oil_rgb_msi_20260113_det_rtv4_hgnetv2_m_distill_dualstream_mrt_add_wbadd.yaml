@@ -1,0 +1,38 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260113
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_dualstream_mrt_add_wbadd
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    # MRT-DETR style cross-spectrum attention fusion (adapted).
+    type: mrt
+    d_model: 128
+    num_stages: 2
+    dropout: 0.0
+    alpha_init: 0.0
+    # Write-back merge inside MRTCrossSpectrumFusion2D.
+    writeback_merge: add
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+

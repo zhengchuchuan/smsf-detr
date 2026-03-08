@@ -1,0 +1,1 @@
+python main.py --opts runtime.device_ids=[1] --config 'configs/task/rtmsfdetr/hod3k_rgb/rtmsfdetr_hod3k_rgb_det_rtv4_hgnetv2_m_distill.yaml'

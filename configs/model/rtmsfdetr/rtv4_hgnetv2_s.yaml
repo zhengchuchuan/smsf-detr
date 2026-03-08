@@ -1,0 +1,27 @@
+# @package _global_
+
+model:
+  model_name: rtmsfdetr
+  model_alias: rtv4_hgnetv2_s
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_s_coco.yml
+  # RT-DETRv4 官方预训练（会自动跳过分类头等 shape 不匹配参数）
+  pretrain_weights: weights/rtdetr/RTv4-S-hgnet.pth
+
+  # 先跑通 RGB-only baseline：关闭蒸馏/teacher
+  disable_distill: true
+
+  # HGNetv2 预训练默认关闭（避免网络依赖）；如有本地权重可手动打开并指定目录
+  hgnet_pretrained: false
+  hgnet_local_model_dir: null
+
+  # 输入反归一化（更贴近 RT-DETRv4 原始实现）
+  input_denormalize: true
+  clamp_after_denormalize: true
+
+  # Instance segmentation (off by default)
+  segmentation_head: false
+  # By default use the highest-resolution FPN level (stride=8) and predict masks at H/8, W/8.
+  mask_feature_level: 0
+  mask_downsample_ratio: 8
+  # Whether to add mask losses on decoder aux_outputs (can be very memory/compute heavy).
+  mask_aux_loss: false

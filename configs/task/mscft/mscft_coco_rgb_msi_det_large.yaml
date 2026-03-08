@@ -1,0 +1,38 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/mscft/default
+  - /runtime/default
+  - /train/mscft_default
+  - _self_
+
+model:
+  model_name: mscft
+  model_alias: mscft
+  # 验证阶段放宽置信度阈值，便于观察早期召回
+  conf_thres: 0.01
+  # 若 train.lr 为空，将回落到 hyp.scratch.yaml 的 lr0（默认 0.01）
+  # YOLO 预训练权重（3 通道），加载时会自动过滤形状不匹配的参数
+  pretrain_weights: weights/yolo/yolov5l.pt
+
+data:
+  # 对齐 YOLO 预训练的 0-1 线性归一化，并中心化 MSI
+  loader: mscft_yolo
+  use_yolo_norm: true
+
+train:
+  epochs: 120
+  batch_size: 2
+  # 从头训练，不再加载不兼容的预训练权重
+  resume: ''
+  # 使用 YOLO 风格 SGD，lr 为空时回落到 hyp.scratch.yaml 的 lr0
+  optimizer: sgd
+  lr: null
+  momentum: 0.937
+  lr_scheduler: cosine
+  warmup_epochs: 5
+  clip_max_norm: 1.0
+  amp: false
+trainer:
+  _target_: engines.trainer.mscft_trainer.MscftTrainer

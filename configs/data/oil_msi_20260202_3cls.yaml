@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - /data/base_msi
+  - _self_
+
+data:
+  # Same dataset as oil_rgb_msi_20260202_3cls, but MSI-only (7-channel TIF).
+  dataset_name: oil_msi_20260202_3cls
+  dataset_dir: data/oil_20260202
+  val_split: val
+  # Used for COCO category remap / evaluation mapping / visualization.
+  class_names: ["oil", "building", "machine"]
+
+  # MSI input
+  use_rgb_input: false
+  use_msi_input: true
+  rgb_input_channels: 0
+  ms_input_channels: 7
+  channel_splits: [0, 7]
+  ms_expected_channels: 7
+  ms_suffix: ".tif"
+
+  # MSI: fixed_scale does (ms / ms_fixed_scale) and clamps to [0,1].
+  ms_normalize_mode: fixed_scale
+  # 16-bit MSI TIF full scale.
+  ms_fixed_scale: 65535.0
+
+  # Keep COCO-style shared geometric augmentation.
+  shared_transform: coco
+

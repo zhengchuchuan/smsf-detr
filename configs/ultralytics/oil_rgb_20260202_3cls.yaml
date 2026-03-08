@@ -1,0 +1,21 @@
+# Ultralytics YOLO dataset config (detect)
+#
+# Source of truth for dataset root/classes:
+# - configs/data/oil_rgb_20260202_3cls.yaml (dataset_dir + class_names)
+#
+# This repo stores:
+# - RGB images (JPG): data/oil_20260202/rgb/{train,val,test}
+# - YOLO labels (TXT): data/oil_20260202/s2adet_msi_20260202_3cls/rgb/labels/{train,val,test}
+#
+# Training scripts create a small "Ultralytics-style" dataset wrapper with per-file symlinks:
+#   data/oil_20260202/ultralytics_rgb_20260202_3cls_v2/{images,labels}/{train,val,test}
+
+path: data/oil_20260202/ultralytics_rgb_20260202_3cls
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: oil
+  1: building
+  2: machine

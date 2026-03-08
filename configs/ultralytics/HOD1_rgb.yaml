@@ -1,0 +1,17 @@
+# Ultralytics YOLO dataset config (detect) for HOD1 RGB
+
+path: data/HOD-1/ultralytics_rgb_HOD1
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: Toyblock_screen
+  1: Photo_screen
+  2: Pen_screen
+  3: Photo_real
+  4: Toyblock_real
+  5: Pen_real
+  6: Leaf_screen
+  7: Leaf_real
+

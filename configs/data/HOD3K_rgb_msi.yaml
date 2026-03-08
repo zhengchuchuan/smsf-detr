@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb_msi
+  - _self_
+
+data:
+  dataset_name: HOD3K_rgb_msi
+  dataset_dir: data/HOD3K
+  # 类别（COCO/VOC 标注里不需要显式提供 background 类别；训练时 background/no-object 由模型内部处理）
+  # HOD3K COCO 标注包含 3 个前景类别：people/bike/car（category_id=1/2/3）。
+  class_names: ["people", "bike", "car"]
+  ms_input_channels: 3
+  channel_splits: [3, 3]
+  ms_expected_channels: 3
+  ms_suffix: ".png"
+  # YOLO-style：保持宽高比 + padding 到方形（同步作用于 RGB + MSI + bbox）
+  shared_transform: letterbox
+  letterbox_fill_value: 114
+  letterbox_ms_fill_value: 0.0

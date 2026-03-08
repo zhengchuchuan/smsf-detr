@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/rfdetr/rfdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/rfdetr/base
+  - _self_
+
+train:
+  # 保证类别列表显式写入

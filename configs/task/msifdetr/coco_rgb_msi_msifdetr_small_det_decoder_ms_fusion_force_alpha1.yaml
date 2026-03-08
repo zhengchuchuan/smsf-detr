@@ -1,0 +1,54 @@
+# @package _global_
+# Decoder 侧 Query 级语义对齐融合（诊断版，强制开启）：
+# - 目的：验证“MSI memory 在 decoder cross-attn 层面是否可带来增益”
+# - 做法：decoder 每层增加一条 MSI deformable cross-attn 分支，并用 alpha gate 融合到 query 表征。
+# - 诊断设置：alpha=1 且冻结，避免再次学回 0。
+#
+# 数据说明：tif 为 8-bit，可优先对照 fixed_scale=255 的归一化，保留绝对强度信息。
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+  use_rgb_input: true
+  use_msi_input: true
+  # tif 为 8-bit：建议先用 fixed_scale 保留绝对强度，再做消融
+  ms_normalize_mode: fixed_scale
+  ms_fixed_scale: 255.0
+
+model:
+  load_dinov2_weights: false
+
+  # MSI 分支（用于生成 ms memory，不做 backbone 侧 P4 融合）
+  msi_fusion: false
+  msi_backbone: specat_encoder
+  msi_pre_downsample_to_p4: true
+  specat_stage: 0
+  specat_num_blocks: [2]
+  specat_base_dim: 64
+  specat_attention_type: base
+  use_ms_mask: true
+
+  # Decoder 侧融合开关
+  decoder_ms_fusion: true
+  decoder_ms_fusion_alpha_init: 1.0
+  decoder_ms_fusion_alpha_scale: 1.0
+  freeze_decoder_ms_fusion_alpha: true
+
+train:
+  # 对齐 baseline251220
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

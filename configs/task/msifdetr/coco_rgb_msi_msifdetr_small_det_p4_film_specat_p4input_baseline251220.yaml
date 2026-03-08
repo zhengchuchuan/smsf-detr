@@ -1,0 +1,54 @@
+# @package _global_
+# 融合测试（以 251220-125309 的“正确 RGB 基线”超参为基础）：
+# - 数据：coco_rgb_msi（RGB+MSI），通道堆叠输入（单输入）
+# - RGB 分支：DINOv2（保持 ImageNet normalize + COCO 风格几何增强）
+# - MSI 分支：SPECAT encoder-only，但先把 MSI 下采样到 P4 分辨率再编码（显存友好）
+# - 融合：P4 FiLM/SE + 门控（alpha=0 初始化，alpha_scale=0.1）
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+  use_rgb_input: true
+  use_msi_input: true
+
+model:
+  load_dinov2_weights: false
+
+  # 融合开关
+  msi_fusion: true
+  msi_backbone: specat_encoder
+  msi_pre_downsample_to_p4: true
+
+  # P4 分辨率上编码，避免额外下采样
+  specat_stage: 0
+  specat_num_blocks: [2]
+  specat_base_dim: 64
+  specat_attention_type: base
+
+  # 门控融合：更保守，避免扰动 RGB
+  fusion_alpha_init: 0.0
+  fusion_alpha_scale: 0.1
+  film_reduction: 4
+  # 方案A：空间可变 FiLM（逐像素 gamma/beta），相比全局池化更适合检测任务
+  film_spatial: true
+  film_kernel_size: 3
+  use_ms_mask: true
+
+train:
+  # 对齐 251220-125309 基线的训练超参（其余沿用 msifdetr_default）
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

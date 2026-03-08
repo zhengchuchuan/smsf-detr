@@ -1,0 +1,31 @@
+# @package _global_
+
+model:
+  model_alias: rfdetr_large
+  encoder: dinov2_windowed_base
+  out_feature_indexes: [2, 5, 8, 11]
+  dec_layers: 3
+  two_stage: true
+  projector_scale: ["P3", "P5"]
+  hidden_dim: 384
+  patch_size: 14
+  num_windows: 4
+  sa_nheads: 12
+  ca_nheads: 24
+  dec_n_points: 4
+  bbox_reparam: true
+  lite_refpoint_refine: true
+  layer_norm: true
+  amp: true
+  num_classes: 90
+  pretrain_weights: rf-detr-large.pth
+  img_size: 560
+  group_detr: 13
+  gradient_checkpointing: false
+  positional_encoding_size: 37
+  ia_bce_loss: true
+  cls_loss_coef: 1.0
+  segmentation_head: false
+  mask_downsample_ratio: 4
+  num_queries: 300
+  num_select: 300

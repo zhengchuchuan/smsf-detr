@@ -1,0 +1,58 @@
+# @package _global_
+# ! best
+defaults:
+  - /data/oil_rgb_msi_20260115
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_c2former_add_wbadd_c3c4c5_alignmsin_input_infonce_p5n64_ch3
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: c2former
+    d_model: 128
+    nhead: 8
+    fuse_stage_idx: [c3, c4, c5]
+    groups: 4
+    cca_stride: 3
+    offset_range_factor: 2
+    no_offset: false
+    attn_drop: 0.0
+    proj_drop: 0.0
+    offset_on: ms
+  backbone_align:
+    enabled: false
+    stage_idx: []
+    loss_weight: 0.05
+    ref_mode: ms_channel
+    ref_channel: 3
+    input_enabled: true
+    input_ref_mode: ms_channel
+    input_ref_channel: 3
+    input_affine_only: true
+    input_affine_scale: 0.01
+    input_affine_per_channel: true
+    input_affine_type: translation
+    input_loss_type: infonce
+    input_nce_patch_size: 5
+    input_nce_num_patches: 64
+    input_nce_tau: 0.2
+    input_loss_downsample: 0.5
+
+train:
+  batch_size: 8
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8

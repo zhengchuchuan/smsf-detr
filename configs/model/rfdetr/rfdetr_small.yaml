@@ -1,0 +1,31 @@
+# @package _global_
+
+model:
+  model_name: rfdetr
+  model_alias: msif_small
+  encoder: dinov2_windowed_small
+  out_feature_indexes: [3, 6, 9, 12]
+  dec_layers: 3
+  two_stage: true
+  projector_scale: ["P4"]
+  hidden_dim: 256
+  patch_size: 16
+  num_windows: 2
+  sa_nheads: 8
+  ca_nheads: 16
+  dec_n_points: 2
+  bbox_reparam: true
+  lite_refpoint_refine: true
+  layer_norm: true
+  img_size: 640
+  group_detr: 13
+  gradient_checkpointing: false
+  positional_encoding_size: 32
+  ia_bce_loss: true
+  cls_loss_coef: 1.0
+  segmentation_head: false
+  mask_downsample_ratio: 4
+  num_queries: 300
+  num_select: 300
+  # 对齐原项目的 small 预训练
+  pretrain_weights: weights/rfdetr/rf-detr-nano.pth

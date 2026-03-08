@@ -1,0 +1,52 @@
+# @package _global_
+# Decoder 侧 Query 级语义对齐融合（可学习 gate 版）：
+# - 在每层 decoder 额外做一次 MSI 的 MSDeformAttn cross-attn
+# - gate 可学习：用于观察模型是否“主动忽略 MSI”（gate -> 0）
+# - 建议对照 force_alpha1 配置一起跑，结合 metrics.csv 中的 gate 统计判断 MSI 分支是否被使用
+#
+# tif 为 8-bit：优先 fixed_scale=255，保留绝对强度信息
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+  use_rgb_input: true
+  use_msi_input: true
+  ms_normalize_mode: fixed_scale
+  ms_fixed_scale: 255.0
+
+model:
+  load_dinov2_weights: false
+
+  # MSI 分支（用于生成 ms memory，不做 backbone 侧 P4 融合）
+  msi_fusion: false
+  msi_backbone: specat_encoder
+  msi_pre_downsample_to_p4: true
+  specat_stage: 0
+  specat_num_blocks: [2]
+  specat_base_dim: 64
+  specat_attention_type: base
+  use_ms_mask: true
+
+  decoder_ms_fusion: true
+  # gate 初值不要太小：避免训练初期直接退化到 RGB-only（可对照不同 init）
+  decoder_ms_fusion_alpha_init: 0.5
+  decoder_ms_fusion_alpha_scale: 1.0
+  freeze_decoder_ms_fusion_alpha: false
+
+train:
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

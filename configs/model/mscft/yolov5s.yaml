@@ -1,0 +1,13 @@
+# @package _global_
+
+# 轻量版 MSCFT YOLO+CFT（基于 yolov5s 深宽缩放），适合显存紧张场景
+model:
+  model_name: mscft
+  model_alias: mscft
+  model_cfg: engines/models/mscft/transformer/yolov5s_fusion_transformer_FLIR.yaml
+  hyp: engines/models/mscft/hyp.scratch.yaml
+  # solid+liquid -> oil
+  num_classes: 4
+  input_channels: 10   # 默认 RGB(3)+MSI(7)
+  conf_thres: 0.25
+  iou_thres: 0.45

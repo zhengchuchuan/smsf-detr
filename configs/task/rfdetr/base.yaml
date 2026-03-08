@@ -1,0 +1,27 @@
+# @package _global_
+
+model:
+  model_name: rfdetr
+  pretrained_encoder: null
+  pretrain_exclude_keys: null
+  pretrain_keys_modify_to_load: null
+  pretrained_distiller: null
+  weight_registry: null
+  local_weights_only: false
+  force_no_pretrain: false
+  freeze_encoder: false
+  gradient_checkpointing: false
+  rms_norm: false
+  backbone_lora: false
+  use_cls_token: false
+  position_embedding: sine
+  dim_feedforward: 2048
+  decoder_norm: LN
+  freeze_batch_norm: false
+  window_block_indexes: null
+  vit_encoder_num_layers: 12
+
+trainer:
+  _target_: engines.trainer.rfdetr_trainer.RfdetrTrainer  # 训练器类的位置
+
+

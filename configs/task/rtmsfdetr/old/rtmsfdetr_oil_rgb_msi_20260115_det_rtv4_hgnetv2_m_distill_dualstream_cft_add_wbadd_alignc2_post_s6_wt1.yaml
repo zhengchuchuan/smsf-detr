@@ -1,0 +1,51 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260115
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_cft_add_wbadd_alignc2_post_s6_wt1
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: cft
+    d_model: 128
+    nhead: 8
+    n_layer: 8
+    block_exp: 4
+    vert_anchors: 8
+    horz_anchors: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    # CFT write-back merge inside GPTFusion2D.
+    writeback_merge: add
+  backbone_align:
+    enabled: true
+    # 0 == first stage (C2). MRT-DETR aligns after stage blocks.
+    stage_idx: [0]
+    position: post_block
+    num_keypoints: 5
+    offset_scale: 6.0
+    loss_weight: 1.0
+    attention_norm: sigmoid
+    padding_mode: border
+    align_corners: true
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8

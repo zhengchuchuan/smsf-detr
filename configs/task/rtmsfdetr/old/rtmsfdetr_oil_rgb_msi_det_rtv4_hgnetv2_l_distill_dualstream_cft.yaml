@@ -1,0 +1,44 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/rtmsfdetr/rtv4_hgnetv2_l
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_l_distill_dualstream_cft
+  dual_stream_backbone: true
+  backbone_output_merge: wavg
+  backbone_fusion:
+    # CFT (Cross-Modality Fusion Transformer) uses a GPT-style self-attention block.
+    # Reference: third_party/multispectral-object-detection/models/common.py::GPT
+    type: cft
+    # Keep d_model consistent with the best co-attn recipe to reduce compute.
+    d_model: 128
+    nhead: 8
+    n_layer: 8
+    block_exp: 4
+    vert_anchors: 8
+    horz_anchors: 8
+    dropout: 0.0
+    alpha_init: 0.0
+    writeback_merge: add
+
+train:
+  batch_size: 16
+  epochs: 120
+  num_classes: 4
+  # 对齐 RGB-only（rtv4_hgnetv2_l）训练 recipe，保证公平对比
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  # 训练 epoch=50 时的建议 flat-cosine（避免 flat/no_aug 区间重叠）
+  flat_epoch: 29
+  no_aug_epoch: 8

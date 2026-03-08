@@ -1,0 +1,26 @@
+# @package _global_
+# 场景备注：MSIF-DETR 通用基础配置（模型/训练器的公共默认值）
+
+model:
+  model_name: msifdetr
+  pretrained_encoder: null
+  pretrain_exclude_keys: null
+  pretrain_keys_modify_to_load: null
+  pretrained_distiller: null
+  weight_registry: null
+  local_weights_only: false
+  force_no_pretrain: false
+  freeze_encoder: false
+  gradient_checkpointing: false
+  rms_norm: false
+  backbone_lora: false
+  use_cls_token: false
+  position_embedding: sine
+  dim_feedforward: 2048
+  decoder_norm: LN
+  freeze_batch_norm: false
+  window_block_indexes: null
+  vit_encoder_num_layers: 12
+
+trainer:
+  _target_: engines.trainer.msifdetr_train.MsifdetrTrainer  # 训练器类的位置

@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_20260101        # 只用 RGB，data/oil
+  - /model/rfdetr/rfdetr_seg_preview
+  - /runtime/default
+  - /train/rfdetr_default
+  - /task/rfdetr/base
+  - _self_
+
+data:
+  dataset_file: coco_rgb
+  dataset_dir: data/oil
+
+train:
+  # solid+liquid -> oil
+  num_classes: 4
+  epochs: 120
+  segmentation_head: true

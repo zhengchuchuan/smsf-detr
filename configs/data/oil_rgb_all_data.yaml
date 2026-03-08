@@ -1,0 +1,34 @@
+# @package _global_
+#
+# 多数据集（RGB-only）示例：
+# - data/oil
+# - data/oil_after_20250519
+#
+# 训练时会对每个 split（train/val/test）分别拼接，并提供合并后的 COCO API 供评估使用。
+
+defaults:
+  - /data/base_rgb
+  - _self_
+
+data:
+  dataset_name: oil_rgb_all_data
+  # 关键：多个数据集根目录（每个目录下都应包含 annotations/ 与 rgb/{split}/）
+  dataset_dirs:
+    - data/oil_20260101
+    - data/oil_after_20250519
+    - data/oil_dji_clip
+    - data/oil_dji_resize
+    - data/oil_negative
+
+  # 保留兼容字段（可不填；用于部分旧逻辑/工具兜底）
+  dataset_dir: data/oil
+
+  # 类别已合并：solid+liquid -> oil
+  class_names: ["_background_", "oil", "building", "machine", "photovoltaic"]
+
+  # 分割模式下的健壮性选项（segmentation_head=true 时生效）
+  filter_annotations_without_masks: true
+  drop_images_without_masks: true
+
+  # 若某个数据集缺少 test.json 等 split，可设置为 true 跳过该数据集的该 split
+  skip_missing_splits: true

@@ -1,0 +1,29 @@
+# @package _global_
+# 基于 `configs/task/msifdetr/coco_rgb_msifdetr_small_det_no_fuse_match_best_pretrain_train.yaml`：
+# - 将模型从 msifdetr_small 切换为 msifdetr_large
+# - 其余数据/训练策略尽量保持一致，便于对照
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/msifdetr/msifdetr_large
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+model:
+  load_dinov2_weights: false
+
+train:
+  epochs: 120
+  # 对齐 best 的有效 batch=4
+  batch_size: 2
+  grad_accum_steps: 2
+
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000
+

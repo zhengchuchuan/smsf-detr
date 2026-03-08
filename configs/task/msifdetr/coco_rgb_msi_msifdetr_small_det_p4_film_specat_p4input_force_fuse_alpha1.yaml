@@ -1,0 +1,59 @@
+# @package _global_
+# 诊断用：强制打开 MSI->RGB 融合，判断 MSI 分支到底提供增益还是注入噪声。
+# - 关键改动：
+#   - fusion_alpha_init=1.0, fusion_alpha_scale=1.0
+#   - freeze_fusion_alpha=true（训练期间不允许学回 0）
+# - 期望现象：
+#   - 若指标明显下降：当前 MSI 特征/对齐/归一化可能在注入噪声，需要改融合对齐策略（方案B）或改 MSI 编码器。
+#   - 若指标上升：MSI 有用，但之前被 gate 学到 0，需要 curriculum / dropout / 更强融合。
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+  use_rgb_input: true
+  use_msi_input: true
+
+model:
+  load_dinov2_weights: false
+
+  # 融合开关
+  msi_fusion: true
+  msi_backbone: specat_encoder
+  msi_pre_downsample_to_p4: true
+
+  # P4 分辨率上编码，避免额外下采样
+  specat_stage: 0
+  specat_num_blocks: [2]
+  specat_base_dim: 64
+  specat_attention_type: base
+
+  # 空间 FiLM（方案A）
+  film_reduction: 4
+  film_spatial: true
+  film_kernel_size: 3
+
+  # 强制打开融合（诊断用）
+  fusion_alpha_init: 1.0
+  fusion_alpha_scale: 1.0
+  freeze_fusion_alpha: true
+
+  use_ms_mask: true
+
+train:
+  # 与 baseline251220 对齐的训练超参
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

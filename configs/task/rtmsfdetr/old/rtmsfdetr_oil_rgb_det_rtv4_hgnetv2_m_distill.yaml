@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/rtmsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+train:
+  # M 模型更大，默认更保守的 batch_size，避免 OOM（可按显存调整）
+  batch_size: 4
+  epochs: 120
+  num_classes: 4
+  # 对齐 RTv4-M 原始 recipe：backbone 更小 lr；norm/bn 不做 weight decay
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*bn).*$'
+      lr: 0.00004
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  # 训练 epoch=50 时的建议 flat-cosine（避免 flat/no_aug 区间重叠）
+  flat_epoch: 29
+  no_aug_epoch: 8

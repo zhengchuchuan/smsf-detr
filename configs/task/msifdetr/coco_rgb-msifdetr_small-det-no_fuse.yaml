@@ -1,0 +1,30 @@
+# @package _global_
+# MSI-only 对照实验（small 模型）：
+# - 数据侧仅输出 MSI（7 通道），RGB 仅作为读取标注/同步几何变换的参考（不喂给模型）
+# - 目的：验证“MSI 模态本身”是否有有效增量（在非严格对齐前提下通常较弱）
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+model:
+  load_dinov2_weights: false
+
+train:
+  epochs: 120
+  # 对齐 best 的有效 batch=4
+  batch_size: 4
+  grad_accum_steps: 2
+
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000
+
+

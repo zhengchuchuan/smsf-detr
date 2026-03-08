@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb
+  - _self_
+
+data:
+  dataset_name: oil_rgb_20260115_3cls
+  dataset_dir: data/oil_20260115
+  # 默认使用 val split 做验证；诊断性地“翻转 val/test”时可设置 val_split: test
+  val_split: val
+  # 类别（含 background；用于 remap/评测映射/可视化）
+  # 类别已合并：solid+liquid -> oil
+  class_names: ["oil", "building", "machine", ]
+  # RGB: ImageNet mean/std normalization (after F.to_tensor scales to [0,1]).
+  rgb_normalize_mode: imagenet

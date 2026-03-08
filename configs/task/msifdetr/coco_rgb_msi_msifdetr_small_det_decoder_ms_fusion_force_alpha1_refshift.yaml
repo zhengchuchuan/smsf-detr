@@ -1,0 +1,55 @@
+# @package _global_
+# Decoder 侧 Query 级语义对齐融合 + MSI reference shift（诊断版，强制开启）：
+# - alpha 固定（tanh(1)=0.7616），排除 gate 学回 0
+# - 对 MSI 分支 reference_points 增加可学习 dx/dy（补偿残余平移错位）
+# - 重点观察：ms_fusion_ratio 是否下降且 mAP 是否提升
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+  use_rgb_input: true
+  use_msi_input: true
+  ms_normalize_mode: fixed_scale
+  ms_fixed_scale: 255.0
+
+model:
+  load_dinov2_weights: false
+
+  msi_fusion: false
+  msi_backbone: specat_encoder
+  msi_pre_downsample_to_p4: true
+  specat_stage: 0
+  specat_num_blocks: [2]
+  specat_base_dim: 64
+  specat_attention_type: base
+  use_ms_mask: true
+
+  decoder_ms_fusion: true
+  decoder_ms_fusion_alpha_init: 1.0
+  decoder_ms_fusion_alpha_scale: 1.0
+  freeze_decoder_ms_fusion_alpha: true
+
+  # 关键新增：MSI reference shift（dx,dy，归一化坐标）
+  decoder_ms_fusion_ref_shift: true
+  decoder_ms_fusion_ref_shift_init: [0.0, 0.0]
+  # 最大平移幅度（0.02≈12.8px@640），可根据残余偏移调大/调小
+  decoder_ms_fusion_ref_shift_scale: 0.02
+  freeze_decoder_ms_fusion_ref_shift: false
+
+train:
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb_msi
+  - _self_
+
+data:
+  dataset_name: oil_rgb_msi
+  dataset_dir: data/oil
+  # 类别（含 background；用于 remap/评测映射/可视化）
+  # 类别已合并：solid+liquid -> oil
+  class_names: ["_background_", "oil", "building", "machine", "photovoltaic"]
+  ms_input_channels: 7
+  channel_splits: [3, 7]
+  ms_expected_channels: 7
+  ms_suffix: ".tif"

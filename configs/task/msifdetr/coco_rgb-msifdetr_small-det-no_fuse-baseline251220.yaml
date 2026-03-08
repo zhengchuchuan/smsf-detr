@@ -1,0 +1,31 @@
+# @package _global_
+# RGB-only 对照：
+# - 数据：/data/oil_rgb（dataset_file=coco_rgb，仅读取 RGB）
+# - 目的：提供纯 RGB 的基线配置（不经过 multispectral 数据管线）
+
+defaults:
+  - /data/oil_rgb_20260101
+  - /model/msifdetr/msifdetr_small
+  - /runtime/default
+  - /train/msifdetr_default
+  - /task/msifdetr/base
+  - _self_
+
+data:
+  dual_stream_output: false
+
+model:
+  load_dinov2_weights: false
+  msi_fusion: false
+
+train:
+  # 对齐 251220-125309 基线的训练超参（其余沿用 msifdetr_default）
+  epochs: 120
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 5e-5
+  lr_encoder: 5e-5
+  lr_scheduler: cosine
+  lr_min_factor: 0.1
+  warmup_epochs: 1
+  warmup_steps: 1000

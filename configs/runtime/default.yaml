@@ -1,0 +1,17 @@
+# @package _global_
+
+runtime:
+  output_root: outputs
+  log_level: INFO
+  auto_structure_output: true
+  # --mode test 时：若 checkpoint 内含 EMA 权重，则默认用 EMA 权重评估（与训练/自动测试对齐）。
+  eval_use_ema: true
+  
+  device: cuda
+  device_ids: [3]
+  world_size: 1
+  dist_url: env://
+  sync_bn: true
+  fp16_eval: false
+  encoder_only: false
+  backbone_only: false

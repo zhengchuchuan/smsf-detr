@@ -1,0 +1,29 @@
+# @package _global_
+
+defaults:
+  - /data/base_rgb_msi
+  - _self_
+
+data:
+  dataset_name: oil_rgb_msi_20260115
+  dataset_dir: data/oil_20260115
+  # 默认使用 val split 做验证；诊断性地“翻转 val/test”时可设置 val_split: test
+  val_split: val
+  # 类别（含 background；用于 remap/评测映射/可视化）
+  # 类别已合并：solid+liquid -> oil
+  class_names: ["_background_", "oil", "building", "machine", "photovoltaic"]
+  ms_input_channels: 7
+  channel_splits: [3, 7]
+  ms_expected_channels: 7
+  ms_suffix: ".tif"
+  # RGB: ImageNet mean/std normalization (after F.to_tensor scales to [0,1]).
+  # rgb_normalize_mode: imagenet
+  rgb_normalize_mode: imagenet
+  # MSI: fixed_scale does (ms / ms_fixed_scale) and clamps to [0,1].
+  ms_normalize_mode: fixed_scale
+  # 16-bit MSI TIF full scale.
+  ms_fixed_scale: 65535.0
+  # 与 RGB-only / MSI-only 保持一致：使用 COCO 风格的共享几何增强（同步作用于 RGB + MSI）
+  # - train: flip + RandomSelect(SquareResize, Resize->Crop->SquareResize)
+  # - val/test: SquareResize
+  shared_transform: coco

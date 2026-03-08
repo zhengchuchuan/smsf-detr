@@ -1,0 +1,34 @@
+# @package _global_
+
+defaults:
+  - /data/oil_rgb_msi_20260101
+  - /model/rtmsfdetr/rtv4_hgnetv2_l
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/rtmsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_l_dualstream_add
+  # 双流骨干：RGB/MSI 各自前向；不做注意力/Transformer 融合，仅做逐元素 add 融合输出特征
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    # 禁用 co-attn/gpt 等融合模块；仅靠 output_merge=add 做简单加和融合
+    type: none
+
+train:
+  batch_size: 8
+  epochs: 120
+  num_classes: 4
+  # 对齐 RGB-only（RTv4-L 原始 recipe）以做公平对比
+  lr: 0.0005
+  weight_decay: 0.000125
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000025
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 29
+  no_aug_epoch: 8
+
