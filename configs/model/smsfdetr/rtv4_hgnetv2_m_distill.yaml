@@ -1,0 +1,23 @@
+# @package _global_
+
+model:
+  model_name: smsfdetr
+  model_alias: rtv4_hgnetv2_m_distill
+  # 阶段1等价基线：显式沿用 RTMSFDETR 的 RT-DETRv4 配置与预训练。
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_m_coco.yml
+  pretrain_weights: weights/rtdetr/RTv4-M-hgnet.pth
+
+  disable_distill: false
+  teacher_repo_path: /home/ubuntu/Documents/newdisk_22T/zcc/msifp-detr/third_party/dinov3
+  teacher_weights_path: weights/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+
+  hgnet_pretrained: false
+  hgnet_local_model_dir: null
+
+  input_denormalize: true
+  clamp_after_denormalize: true
+
+  segmentation_head: false
+  mask_feature_level: 0
+  mask_downsample_ratio: 8
+  mask_aux_loss: false

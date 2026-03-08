@@ -1,0 +1,23 @@
+# @package _global_
+
+# 阶段1等价基线：
+# - 与 rtmsfdetr_oil_rgb_20260202_det_rtv4_hgnetv2_m_distill.yaml 保持同训练配方；
+# - 仅替换为 smsfdetr 的 model/trainer 标识。
+defaults:
+  - /data/oil_rgb_20260202_3cls
+  - /model/smsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+data:
+  rgb_normalize_mode: imagenet
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det
+  batch_size: 24
+  epochs: 100
+  num_classes: 3
+  # Align to RT-DETRv4-M recipe.
+  lr: 0.0005

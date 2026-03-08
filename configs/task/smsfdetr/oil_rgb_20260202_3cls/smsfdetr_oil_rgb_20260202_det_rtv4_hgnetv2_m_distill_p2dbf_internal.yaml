@@ -1,0 +1,13 @@
+# @package _global_
+
+# 阶段：单流等价基线 + P2DBF(internal)
+defaults:
+  - /task/smsfdetr/oil_rgb_20260202_3cls/smsfdetr_oil_rgb_20260202_det_rtv4_hgnetv2_m_distill_equiv_rtms
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_p2dbf_internal
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_m_coco_p2dbf_internal.yml
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_p2dbf_internal

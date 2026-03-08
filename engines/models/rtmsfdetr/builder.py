@@ -344,6 +344,16 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
         elif hasattr(ms_band_sep_cfg_raw, "items"):
             ms_band_sep_cfg = {k: v for k, v in ms_band_sep_cfg_raw.items()}  # type: ignore[assignment]
 
+    eemsa_cfg_raw = getattr(args, "backbone_eemsa", None)
+    eemsa_cfg: Dict[str, Any] | None = None
+    if eemsa_cfg_raw is not None:
+        if isinstance(eemsa_cfg_raw, dict):
+            eemsa_cfg = dict(eemsa_cfg_raw)
+        elif isinstance(eemsa_cfg_raw, Mapping):
+            eemsa_cfg = dict(eemsa_cfg_raw)
+        elif hasattr(eemsa_cfg_raw, "items"):
+            eemsa_cfg = {k: v for k, v in eemsa_cfg_raw.items()}  # type: ignore[assignment]
+
     overrides: Dict[str, Any] = {
         "num_classes": num_classes,
         # 禁用 RT-DETRv4 自己的 MSCOCO remap（本工程由 BaseTrainer 统一处理 label->category_id 映射）
@@ -361,6 +371,8 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
     }
     if hgnet_local_model_dir is not None:
         overrides["HGNetv2"]["local_model_dir"] = str(hgnet_local_model_dir)
+    if eemsa_cfg is not None:
+        overrides["HGNetv2"]["eemsa"] = eemsa_cfg
 
     if dual_stream_backbone:
         # 需要从 vendored YAML 中读取 HGNetv2 的基础超参（name/return_idx/use_lab），避免硬编码各尺度配置。

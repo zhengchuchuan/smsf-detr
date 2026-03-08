@@ -1,0 +1,20 @@
+__include__: [
+  './rtv4_hgnetv2_m_coco.yml'
+]
+
+output_dir: ./outputs/rtv4_hgnetv2_m_coco_acaf_topdown
+
+HybridEncoder:
+  # ACAF (canonical name; DCCFF aliases remain backward-compatible in code)
+  acaf_enabled: True
+  acaf_apply_topdown: True
+  acaf_apply_bottomup: False
+  acaf_reduction: 8
+  acaf_num_heads: 8
+  acaf_num_points: 2
+  acaf_channel_attn: eca
+  acaf_channel_attn_reduction: 16
+  acaf_offset_scale: 1.0
+  acaf_padding_mode: zeros
+  acaf_align_corners: True
+  acaf_act: silu

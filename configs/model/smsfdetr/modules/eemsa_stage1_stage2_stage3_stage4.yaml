@@ -1,0 +1,32 @@
+# @package _global_
+
+model:
+  # EEMSA: Edge-Enhanced Multi-Scale Attention
+  # reduce -> (Edge + EMA) -> fusion -> (optional ECA) -> expand -> residual
+  backbone_eemsa:
+    enabled: true
+    mode: insert
+    locations: [stage1, stage2, stage3, stage4]
+
+    # bottleneck width
+    ratio: 0.25
+    min_channels: 32
+
+    # edge branch
+    edge_dw_kernel_size: 3
+    edge_use_pointwise: true
+
+    # EMA branch
+    ema_groups: 8
+    ema_conv_kernel_size: 3
+    ema_use_group_norm: true
+
+    # branch fusion
+    fusion: weighted_sum  # {weighted_sum, concat1x1}
+
+    # post process
+    norm: bn
+    act: silu
+    use_eca: true
+    eca_kernel_size: 3
+    alpha_init: 0.1

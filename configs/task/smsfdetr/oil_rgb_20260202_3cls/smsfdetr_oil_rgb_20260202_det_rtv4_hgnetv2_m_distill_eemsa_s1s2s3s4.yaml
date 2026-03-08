@@ -1,0 +1,13 @@
+# @package _global_
+
+# 阶段2（单流）：在等价基线上开启 EEMSA（stage1~stage4）。
+defaults:
+  - /task/smsfdetr/oil_rgb_20260202_3cls/smsfdetr_oil_rgb_20260202_det_rtv4_hgnetv2_m_distill_equiv_rtms
+  - /model/smsfdetr/modules/eemsa_stage1_stage2_stage3_stage4
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_eemsa_s1s2s3s4
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_eemsa_s1s2s3s4

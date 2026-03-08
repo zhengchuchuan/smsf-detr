@@ -5,12 +5,16 @@ reference
 Copyright (c) 2024 The D-FINE Authors. All Rights Reserved.
 """
 
+import os
+from collections.abc import Iterable
+from typing import Any, Mapping
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import os
 
 from .common import FrozenBatchNorm2d
+from .eemsa import EEMSA
 from ..core import register
 import logging
 
@@ -20,6 +24,40 @@ zeros_ = nn.init.zeros_
 ones_ = nn.init.ones_
 
 __all__ = ['HGNetv2']
+
+
+def _parse_eemsa_locations(value: Any) -> set[str]:
+    if value is None:
+        return {"stage1", "stage2", "stage3", "stage4"}
+    if isinstance(value, str):
+        items = [s.strip() for s in value.replace(";", ",").split(",") if s.strip()]
+    elif isinstance(value, (list, tuple, set)):
+        items = [str(s).strip() for s in value]
+    elif isinstance(value, Iterable) and not isinstance(value, (str, bytes, Mapping)):
+        items = [str(s).strip() for s in value]
+    else:
+        items = [str(value).strip()]
+
+    out: set[str] = set()
+    for item in items:
+        key = item.lower()
+        if key in {"stem", "after_stem", "post_stem"}:
+            out.add("stem")
+        elif key in {"stage1", "stage_1", "c2", "after_stage1"}:
+            out.add("stage1")
+        elif key in {"stage2", "stage_2", "c3", "after_stage2"}:
+            out.add("stage2")
+        elif key in {"stage3", "stage_3", "c4", "after_stage3"}:
+            out.add("stage3")
+        elif key in {"stage4", "stage_4", "c5", "after_stage4"}:
+            out.add("stage4")
+        else:
+            raise ValueError(
+                f"Unsupported EEMSA location: {item}. "
+                "Expected one of stem/stage1/stage2/stage3/stage4 "
+                "(aliases: c2/c3/c4/c5)."
+            )
+    return out
 
 
 class LearnableAffineBlock(nn.Module):
@@ -444,7 +482,8 @@ class HGNetv2(nn.Module):
                  freeze_at=0,
                  freeze_norm=True,
                  pretrained=True,
-                 local_model_dir='weight/hgnetv2/'):
+                 local_model_dir='weight/hgnetv2/',
+                 eemsa: Mapping[str, Any] | None = None):
         super().__init__()
         self.use_lab = use_lab
         self.return_idx = return_idx
@@ -469,6 +508,85 @@ class HGNetv2(nn.Module):
                 mid_chs=stem_channels[1],
                 out_chs=stem_channels[2],
                 use_lab=use_lab)
+
+        # Optional EEMSA (Edge-Enhanced Multi-Scale Attention) at stem / selected stages.
+        self.eemsa_stem: EEMSA | None = None
+        self.eemsa_stage_modules = nn.ModuleDict()
+        eemsa_cfg_raw = eemsa
+        if eemsa_cfg_raw is not None:
+            if isinstance(eemsa_cfg_raw, Mapping):
+                eemsa_cfg = dict(eemsa_cfg_raw)
+            elif hasattr(eemsa_cfg_raw, "items"):
+                eemsa_cfg = {k: v for k, v in eemsa_cfg_raw.items()}  # type: ignore[assignment]
+            else:
+                raise TypeError(f"Unsupported EEMSA config type: {type(eemsa_cfg_raw)}")
+
+            enabled = bool(eemsa_cfg.get("enabled", eemsa_cfg.get("enable", False)))
+            if enabled:
+                mode = str(eemsa_cfg.get("mode", "insert") or "insert").strip().lower()
+                if mode not in {"insert"}:
+                    raise ValueError(
+                        f"Unsupported EEMSA mode={mode}. Current implementation only supports insert."
+                    )
+
+                locations = _parse_eemsa_locations(eemsa_cfg.get("locations", eemsa_cfg.get("location", None)))
+                ratio = float(eemsa_cfg.get("ratio", 0.25) or 0.25)
+                min_channels = int(eemsa_cfg.get("min_channels", 32) or 32)
+                edge_dw_kernel_size = int(eemsa_cfg.get("edge_dw_kernel_size", 3) or 3)
+                edge_use_pointwise = bool(eemsa_cfg.get("edge_use_pointwise", True))
+                ema_groups = int(eemsa_cfg.get("ema_groups", 8) or 8)
+                ema_conv_kernel_size = int(eemsa_cfg.get("ema_conv_kernel_size", 3) or 3)
+                ema_use_group_norm = bool(eemsa_cfg.get("ema_use_group_norm", True))
+                fusion = str(eemsa_cfg.get("fusion", "weighted_sum") or "weighted_sum")
+                norm = str(eemsa_cfg.get("norm", "bn") or "bn")
+                act = str(eemsa_cfg.get("act", "silu") or "silu")
+                use_eca = bool(eemsa_cfg.get("use_eca", True))
+                eca_kernel_size = int(eemsa_cfg.get("eca_kernel_size", 3) or 3)
+                alpha_init = float(eemsa_cfg.get("alpha_init", 0.1) or 0.1)
+                stage_keys = list(stage_config.keys())
+
+                if "stem" in locations:
+                    self.eemsa_stem = EEMSA(
+                        channels=int(stem_channels[2]),
+                        ratio=ratio,
+                        min_channels=min_channels,
+                        edge_dw_kernel_size=edge_dw_kernel_size,
+                        edge_use_pointwise=edge_use_pointwise,
+                        ema_groups=ema_groups,
+                        ema_conv_kernel_size=ema_conv_kernel_size,
+                        ema_use_group_norm=ema_use_group_norm,
+                        fusion=fusion,
+                        norm=norm,
+                        act=act,
+                        use_eca=use_eca,
+                        eca_kernel_size=eca_kernel_size,
+                        alpha_init=alpha_init,
+                    )
+
+                for stage_idx_1b, stage_name in enumerate(["stage1", "stage2", "stage3", "stage4"], start=1):
+                    if stage_name not in locations:
+                        continue
+                    stage_idx_0b = stage_idx_1b - 1
+                    if stage_idx_0b >= len(stage_keys):
+                        continue
+                    stage_k = stage_keys[stage_idx_0b]
+                    stage_out_channels = int(stage_config[stage_k][2])
+                    self.eemsa_stage_modules[str(stage_idx_0b)] = EEMSA(
+                        channels=stage_out_channels,
+                        ratio=ratio,
+                        min_channels=min_channels,
+                        edge_dw_kernel_size=edge_dw_kernel_size,
+                        edge_use_pointwise=edge_use_pointwise,
+                        ema_groups=ema_groups,
+                        ema_conv_kernel_size=ema_conv_kernel_size,
+                        ema_use_group_norm=ema_use_group_norm,
+                        fusion=fusion,
+                        norm=norm,
+                        act=act,
+                        use_eca=use_eca,
+                        eca_kernel_size=eca_kernel_size,
+                        alpha_init=alpha_init,
+                    )
 
         # stages
         self.stages = nn.ModuleList()
@@ -578,9 +696,14 @@ class HGNetv2(nn.Module):
 
     def forward(self, x):
         x = self.stem(x)
+        if self.eemsa_stem is not None:
+            x = self.eemsa_stem(x)
         outs = []
         for idx, stage in enumerate(self.stages):
             x = stage(x)
+            edge_key = str(idx)
+            if edge_key in self.eemsa_stage_modules:
+                x = self.eemsa_stage_modules[edge_key](x)
             if idx in self.return_idx:
                 outs.append(x)
         return outs

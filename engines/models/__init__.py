@@ -27,5 +27,5 @@ def _optional_import(submodule: str) -> None:
         _LOG.debug("Skip optional model package %s (missing dependency: %s)", submodule, missing)
 
 
-for _name in ("rfdetr", "msifdetr", "mscft", "rtmsfdetr"):
+for _name in ("rfdetr", "msifdetr", "mscft", "rtmsfdetr", "smsfdetr"):
     _optional_import(_name)
