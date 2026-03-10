@@ -1254,6 +1254,68 @@ class BaseTrainer:
             return torch.tensor(0.0, device=next(iter(loss_dict.values())).device)
         return sum(losses)
 
+    @staticmethod
+    def _sanitize_bn_running_stats(model: torch.nn.Module | None) -> Dict[str, Any]:
+        """
+        修复 BatchNorm running stats 中的 NaN/Inf，避免验证阶段因为坏掉的统计量直接崩溃。
+
+        背景：
+        - 在训练后期若某些分支出现数值异常，BN 的 running_mean/running_var 可能写入非有限值；
+        - 训练态 BN 使用当前 batch 统计，问题不一定立刻暴露；
+        - 验证/测试态依赖 running stats，可能出现指标突降并锁死。
+        """
+        summary: Dict[str, Any] = {
+            "fixed_modules": 0,
+            "fixed_values": 0,
+            "examples": [],
+        }
+        if model is None:
+            return summary
+
+        bn_base = torch.nn.modules.batchnorm._BatchNorm
+        with torch.no_grad():
+            for module_name, module in model.named_modules():
+                if not isinstance(module, bn_base):
+                    continue
+                fixed_this_module = 0
+
+                running_mean = getattr(module, "running_mean", None)
+                if torch.is_tensor(running_mean):
+                    bad = ~torch.isfinite(running_mean)
+                    bad_count = int(bad.sum().item())
+                    if bad_count > 0:
+                        running_mean.data = torch.nan_to_num(
+                            running_mean.data,
+                            nan=0.0,
+                            posinf=1.0e4,
+                            neginf=-1.0e4,
+                        )
+                        fixed_this_module += bad_count
+                    running_mean.data.clamp_(min=-1.0e4, max=1.0e4)
+
+                running_var = getattr(module, "running_var", None)
+                if torch.is_tensor(running_var):
+                    bad = ~torch.isfinite(running_var)
+                    bad_count = int(bad.sum().item())
+                    if bad_count > 0:
+                        running_var.data = torch.nan_to_num(
+                            running_var.data,
+                            nan=1.0,
+                            posinf=1.0e4,
+                            neginf=1.0,
+                        )
+                        fixed_this_module += bad_count
+                    eps = float(getattr(module, "eps", 1.0e-5))
+                    running_var.data.clamp_(min=eps, max=1.0e4)
+
+                if fixed_this_module > 0:
+                    summary["fixed_modules"] += 1
+                    summary["fixed_values"] += fixed_this_module
+                    if len(summary["examples"]) < 5:
+                        summary["examples"].append(module_name or "<root>")
+
+        return summary
+
     def train(self):
         logging.info("BaseTrainer train function called.")
         train_cfg: Dict[str, Any] = get_config(self.cfg, "train", {}) or {}
@@ -1723,6 +1785,22 @@ class BaseTrainer:
                     sampler.set_epoch(epoch)
 
             train_stats = self.train_one_epoch(epoch=epoch, clip_max_norm=clip_max_norm)
+            model_for_sanitize = self.model.module if hasattr(self.model, "module") else self.model
+            bn_fix_model = self._sanitize_bn_running_stats(model_for_sanitize)
+            bn_fix_ema = {"fixed_modules": 0, "fixed_values": 0, "examples": []}
+            if self.ema is not None and getattr(self.ema, "ema", None) is not None:
+                bn_fix_ema = self._sanitize_bn_running_stats(self.ema.ema)
+            if bn_fix_model["fixed_modules"] > 0 or bn_fix_ema["fixed_modules"] > 0:
+                logging.warning(
+                    "检测到并修复 BN 非有限统计量: model(modules=%d, values=%d, examples=%s), "
+                    "ema(modules=%d, values=%d, examples=%s)",
+                    int(bn_fix_model["fixed_modules"]),
+                    int(bn_fix_model["fixed_values"]),
+                    bn_fix_model["examples"],
+                    int(bn_fix_ema["fixed_modules"]),
+                    int(bn_fix_ema["fixed_values"]),
+                    bn_fix_ema["examples"],
+                )
             val_stats = self._validate_epoch(epoch=epoch)
             current_best_score = _compute_best_score(val_stats)
             is_new_best = False
@@ -1762,6 +1840,10 @@ class BaseTrainer:
                 **gate_stats,
                 **ms_runtime_stats,
                 **ms_shift_stats,
+                "bn_sanitize_model_modules": int(bn_fix_model["fixed_modules"]),
+                "bn_sanitize_model_values": int(bn_fix_model["fixed_values"]),
+                "bn_sanitize_ema_modules": int(bn_fix_ema["fixed_modules"]),
+                "bn_sanitize_ema_values": int(bn_fix_ema["fixed_values"]),
                 **prefixed_train,
                 **prefixed_val,
                 "epoch_time": str(datetime.timedelta(seconds=int(time.time() - epoch_start))),
@@ -2381,6 +2463,15 @@ class BaseTrainer:
             }
 
         eval_model = self.ema.ema if getattr(self, "ema", None) is not None else self.model
+        bn_fix_eval = self._sanitize_bn_running_stats(eval_model)
+        if bn_fix_eval["fixed_modules"] > 0:
+            logging.warning(
+                "验证前修复 BN 非有限统计量: split=%s, modules=%d, values=%d, examples=%s",
+                split_prefix,
+                int(bn_fix_eval["fixed_modules"]),
+                int(bn_fix_eval["fixed_values"]),
+                bn_fix_eval["examples"],
+            )
         eval_model.eval()
         self.criterion.eval()
         metric_logger = MetricLogger(delimiter="  ")

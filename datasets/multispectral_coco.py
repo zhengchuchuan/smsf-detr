@@ -311,6 +311,7 @@ def build_multispectral_dataset(
         include_masks=getattr(args, "segmentation_head", False),
         expected_ms_channels=getattr(args, "ms_expected_channels", 7),
         ms_suffix=getattr(args, "ms_suffix", ".tif"),
+        ms_npy_layout=getattr(args, "ms_npy_layout", "auto"),
         random_horizontal_flip=not getattr(args, "ms_disable_random_flip", False),
         flip_prob=getattr(args, "ms_flip_prob", 0.5),
         rgb_normalize_mode=getattr(args, "rgb_normalize_mode", "imagenet"),
@@ -364,6 +365,7 @@ def _load_msi_as_tensor(
     msi_path: Path,
     *,
     expected_channels: Optional[int] = None,
+    npy_layout: Literal["auto", "cwh", "chw", "hwc"] = "auto",
 ) -> Tensor:
     """读取多光谱文件 -> float32 Tensor，自动调整为 [C, H, W]。
 
@@ -377,6 +379,15 @@ def _load_msi_as_tensor(
     suffix = msi_path.suffix.lower()
     if suffix in {".tif", ".tiff"}:
         array = tifffile.imread(str(msi_path))
+    elif suffix in {".npy", ".npz"}:
+        if suffix == ".npy":
+            array = np.load(msi_path, mmap_mode="r")
+        else:
+            with np.load(msi_path, mmap_mode="r") as bundle:
+                keys = sorted(bundle.files)
+                if not keys:
+                    raise ValueError(f"空的 npz 文件：{msi_path}")
+                array = bundle[keys[0]]
     elif suffix in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
         # LLVIP 等数据集的“红外/热成像”经常以 8-bit jpg/png 存储
         with Image.open(msi_path) as img:
@@ -398,21 +409,26 @@ def _load_msi_as_tensor(
         raise ValueError(f"多光谱图像形状异常（需要 3 维）：{msi_path}, shape={array.shape}")
 
     # 统一为 HWC
-    # tifffile 可能返回 CHW 或 HWC；PIL/np.array 通常为 HWC。
-    # 这里使用“通道数通常远小于高宽”的启发式来判定。
+    # tifffile/numpy 可能返回 CHW/CWH/HWC；PIL/np.array 通常为 HWC。
+    # MODA 常见为 CWH（如 [8, 1200, 900]），可通过 data.ms_npy_layout 显式指定。
     dim0, dim1, dim2 = array.shape
-    is_chw = dim0 <= 32 and dim0 < dim1 and dim0 < dim2
-    is_hwc = dim2 <= 32 and dim2 < dim0 and dim2 < dim1
-    if is_chw and is_hwc and expected_channels is not None:
-        exp = int(expected_channels)
-        if dim0 == exp and dim2 != exp:
-            is_hwc = False
-        elif dim2 == exp and dim0 != exp:
-            is_chw = False
-    if is_chw and not is_hwc:
-        array_hwc = np.transpose(array, (1, 2, 0))
-    else:
+    if npy_layout == "hwc":
         array_hwc = array
+    elif npy_layout == "chw":
+        array_hwc = np.transpose(array, (1, 2, 0))
+    elif npy_layout == "cwh":
+        array_hwc = np.transpose(array, (2, 1, 0))
+    else:
+        is_ch_first = dim0 <= 32 and dim0 < dim1 and dim0 < dim2
+        is_ch_last = dim2 <= 32 and dim2 < dim0 and dim2 < dim1
+        if is_ch_first and not is_ch_last:
+            # CHW/CWH 含糊场景：当 axis-1 >= axis-2 时优先判作 CWH（匹配 MODA 1200x900）。
+            if expected_channels is not None and int(expected_channels) == int(dim0) and dim1 >= dim2:
+                array_hwc = np.transpose(array, (2, 1, 0))
+            else:
+                array_hwc = np.transpose(array, (1, 2, 0))
+        else:
+            array_hwc = array
 
     if array_hwc.ndim != 3:
         raise ValueError(f"多光谱图像 shape 解析失败：{msi_path}, shape={array.shape}")
@@ -709,6 +725,7 @@ class MultispectralDatasetConfig:
     include_masks: bool = False
     expected_ms_channels: int = 7
     ms_suffix: str = ".tif"
+    ms_npy_layout: Literal["auto", "cwh", "chw", "hwc"] = "auto"
     random_horizontal_flip: bool = True
     flip_prob: float = 0.5
     rgb_normalize_mode: Literal["imagenet", "linear", "image_max", "per_channel_minmax"] = "imagenet"
@@ -824,6 +841,7 @@ class CocoRgbMultispectralDataset(Dataset):
             ms_tensor = _load_msi_as_tensor(
                 msi_path,
                 expected_channels=self.cfg.expected_ms_channels,
+                npy_layout=self.cfg.ms_npy_layout,
             )
 
         if self.cfg.use_rgb_input:

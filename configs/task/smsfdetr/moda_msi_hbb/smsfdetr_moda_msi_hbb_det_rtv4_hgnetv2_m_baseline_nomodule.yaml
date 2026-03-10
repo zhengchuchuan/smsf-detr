@@ -1,0 +1,21 @@
+# @package _global_
+
+# MODA-hbb baseline（MSI-only, no extra modules）
+defaults:
+  - /data/moda_msi_hbb
+  - /model/smsfdetr/rtv4_hgnetv2_m_distill
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_moda_msi_hbb_baseline_nomodule
+  disable_distill: true
+  dual_stream_backbone: false
+
+train:
+  batch_size: 16
+  epochs: 50
+  num_classes: 8
+  lr: 0.0005

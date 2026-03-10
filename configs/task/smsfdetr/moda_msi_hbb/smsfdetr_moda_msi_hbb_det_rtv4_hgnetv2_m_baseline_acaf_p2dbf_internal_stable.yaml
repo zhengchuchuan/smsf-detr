@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - /task/smsfdetr/moda_msi_hbb/smsfdetr_moda_msi_hbb_det_rtv4_hgnetv2_m_baseline_nomodule
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_moda_msi_hbb_baseline_acaf_p2dbf_internal_stable
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_m_coco_acaf_p2dbf_internal_stable_moda.yml
+
+train:
+  # Stability-first recipe for MODA + ACAF + P2-DBF.
+  batch_size: 8
+  lr: 0.0003
+  clip_max_norm: 0.05
+  warmup_iter: 400
+  warmup_max_epochs: 3
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.00008
+    - params: '^(?=.*(?:norm|bn)).*$'
+      lr: 0.0003
+      weight_decay: 0.0

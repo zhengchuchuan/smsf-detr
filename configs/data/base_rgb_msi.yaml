@@ -12,6 +12,8 @@ data:
   rgb_normalize_mode: per_channel_minmax
   ms_normalize_mode: per_channel_minmax
   ms_fixed_scale: 255.0
+  # MSI npy layout hint: auto/chw/cwh/hwc.
+  ms_npy_layout: auto
   ms_center_to_rgb_range: false
   ms_stats_cache: null
   ms_stats_max_images: null

@@ -1,0 +1,18 @@
+# @package _global_
+
+# Group-3: baseline + (ACAF/P2-DBF internal stable) + EEMSA(stage1~stage4)
+defaults:
+  - /task/smsfdetr/moda_msi_hbb/smsfdetr_moda_msi_hbb_det_rtv4_hgnetv2_m_baseline_acaf_p2dbf_internal_stable
+  - /model/smsfdetr/modules/eemsa_stage1_stage2_stage3_stage4
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_moda_msi_hbb_baseline_acaf_p2dbf_internal_stable_eemsa_s1s2s3s4
+  backbone_eemsa:
+    locations: [stage1, stage2, stage3, stage4]
+    fusion: weighted_sum
+    use_eca: true
+
+train:
+  # Keep stability-oriented defaults from stable ACAF/P2-DBF recipe.
+  batch_size: 8

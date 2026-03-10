@@ -1,0 +1,18 @@
+# @package _global_
+
+# Group-1: baseline + EEMSA(stage1~stage4)
+defaults:
+  - /task/smsfdetr/moda_msi_hbb/smsfdetr_moda_msi_hbb_det_rtv4_hgnetv2_m_baseline_nomodule
+  - /model/smsfdetr/modules/eemsa_stage1_stage2_stage3_stage4
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_moda_msi_hbb_baseline_eemsa_s1s2s3s4
+  backbone_eemsa:
+    locations: [stage1, stage2, stage3, stage4]
+    fusion: weighted_sum
+    use_eca: true
+
+train:
+  batch_size: 16
+  epochs: 50

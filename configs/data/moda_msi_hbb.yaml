@@ -1,0 +1,29 @@
+# @package _global_
+
+defaults:
+  - /data/base_msi
+  - _self_
+
+data:
+  dataset_name: moda_msi_hbb
+  dataset_dir: data/MODA-hbb-coco
+  # MODA-hbb-coco only has train/test annotations.
+  val_split: test
+  test_split: test
+
+  # MODA categories (8 classes)
+  class_names: ["pedestrian", "car", "van", "truck", "bus", "tricycle", "awning-bike", "bike"]
+
+  ms_input_channels: 8
+  channel_splits: [0, 8]
+  ms_expected_channels: 8
+  ms_suffix: ".npy"
+  # MODA npy layout is CWH: (C, W, H), e.g. (8, 1200, 900)
+  ms_npy_layout: cwh
+
+  # MODA npy in this project is uint8.
+  ms_normalize_mode: fixed_scale
+  ms_fixed_scale: 255.0
+
+  # Keep COCO-like geometric augmentation in multispectral_coco loader.
+  shared_transform: coco

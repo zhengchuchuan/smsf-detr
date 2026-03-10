@@ -1,0 +1,12 @@
+__include__: [
+  './rtv4_hgnetv2_m_coco_acaf_p2dbf_internal.yml'
+]
+
+output_dir: ./outputs/rtv4_hgnetv2_m_coco_acaf_p2dbf_internal_stable_moda
+
+HybridEncoder:
+  # MODA-stable variant: keep ACAF + P2-DBF structure, but soften bridge intensity.
+  acaf_offset_scale: 0.5
+  p2_dbf_res_scale_init: 0.03
+  mkb_use_global_branch: False
+  mkb_expand_ratio: 0.375
