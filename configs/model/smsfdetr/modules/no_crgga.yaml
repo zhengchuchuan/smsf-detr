@@ -1,0 +1,6 @@
+# @package _global_
+
+model:
+  # 不启用 MS band-separated stem / CRGGA 对齐分支。
+  backbone_ms_band_sep:
+    enabled: false

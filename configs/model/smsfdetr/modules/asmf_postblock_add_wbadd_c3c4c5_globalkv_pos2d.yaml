@@ -1,0 +1,25 @@
+# @package _global_
+
+model:
+  # ASMF: Adaptive Sampling Multispectral Fusion
+  # 注意：当前工程里 `backbone_fusion.type=c2former` 是 ASMF 的历史配置名/兼容入口。
+  dual_stream_backbone: true
+  backbone_output_merge: add
+  backbone_fusion:
+    type: c2former
+    position: post_block
+    d_model: 128
+    nhead: 8
+    fuse_stage_idx: [c3, c4, c5]
+    groups: 4
+    cca_stride: 3
+    offset_range_factor: 2
+    no_offset: false
+    attn_drop: 0.0
+    proj_drop: 0.0
+    offset_on: ms
+    global_kv: true
+    global_vert_anchors: 8
+    global_horz_anchors: 8
+    c2former_use_pos_encoding: true
+    c2former_pos_temperature: 10000.0

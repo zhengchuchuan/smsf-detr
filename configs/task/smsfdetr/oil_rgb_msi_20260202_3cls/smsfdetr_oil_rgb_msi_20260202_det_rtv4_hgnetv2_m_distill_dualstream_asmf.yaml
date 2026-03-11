@@ -1,0 +1,13 @@
+# @package _global_
+
+# 双流消融：仅使用 ASMF，不使用 CRGGA
+# - 统一复用 ASMF / no_crgga 模块配置
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf

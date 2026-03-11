@@ -1,0 +1,4 @@
+# @package _global_
+
+model:
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_m_coco_p2dbf_internal.yml

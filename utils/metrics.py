@@ -107,6 +107,7 @@ class MetricsPlotSink:
         coco_epochs = np.array(coco_x, dtype=np.float32)
         ap50_90 = np.array([safe_index(x, 0) for x in coco_eval], dtype=np.float32)  # AP@[.5:.95]
         ap50 = np.array([safe_index(x, 1) for x in coco_eval], dtype=np.float32)  # AP@0.5
+        ap75 = np.array([safe_index(x, 2) for x in coco_eval], dtype=np.float32)  # AP@0.75
         ap_s = np.array([safe_index(x, 3) for x in coco_eval], dtype=np.float32)  # AP small
         ap_m = np.array([safe_index(x, 4) for x in coco_eval], dtype=np.float32)  # AP medium
         ap_l = np.array([safe_index(x, 5) for x in coco_eval], dtype=np.float32)  # AP large
@@ -127,6 +128,8 @@ class MetricsPlotSink:
 
         if ap50.size > 0 and coco_epochs.size > 0:
             axes[0][1].plot(coco_epochs[: len(ap50)], ap50, marker="o", linestyle="-", label="AP50")
+        if ap75.size > 0 and coco_epochs.size > 0:
+            axes[0][1].plot(coco_epochs[: len(ap75)], ap75, marker="o", linestyle="-.", label="AP75")
         if ap50_90.size > 0 and coco_epochs.size > 0:
             axes[0][1].plot(coco_epochs[: len(ap50_90)], ap50_90, marker="o", linestyle="--", label="AP50_95")
         if ap_s.size > 0 and coco_epochs.size > 0:
@@ -1568,11 +1571,18 @@ def save_detection_metric_charts(
     confidence_curve = curves.get("confidence")
     f1_curve = curves.get("f1")
 
+    def _get_first_present(mapping: dict, *keys: str):
+        for key in keys:
+            if key in mapping:
+                return mapping.get(key)
+        return None
+
     precision = _sanitize_numeric(results.get("precision"))
     recall = _sanitize_numeric(results.get("recall"))
     f1 = _sanitize_numeric(results.get("f1"))
     map_50 = _sanitize_numeric(results.get("map"))
-    map_5095 = _sanitize_numeric(results.get("map@50:95") or results.get("map50_95"))
+    map_75 = _sanitize_numeric(_get_first_present(results, "map@75", "map75"))
+    map_5095 = _sanitize_numeric(_get_first_present(results, "map@50:95", "map50_95"))
     score_thr = _sanitize_numeric(results.get("score_threshold"))
 
     charts_dir = Path(output_dir) / str(save_subdir)
@@ -1653,6 +1663,9 @@ def save_detection_metric_charts(
             "map": "map50",
             "map50": "map50",
             "map@0.5": "map50",
+            "map75": "map75",
+            "map@75": "map75",
+            "map@0.75": "map75",
             "map50_95": "map50_95",
             "map@50:95": "map50_95",
             "map5095": "map50_95",
@@ -1686,6 +1699,7 @@ def save_detection_metric_charts(
         ("recall", "Recall", recall),
         ("f1", "F1 Score", f1),
         ("map50", "mAP@0.5", map_50),
+        ("map75", "mAP@0.75", map_75),
         ("map50_95", "mAP@0.5:0.95", map_5095),
         ("ap_s", "AP_s", _sanitize_numeric(results.get("map_s"))),
         ("ap_m", "AP_m", _sanitize_numeric(results.get("map_m"))),
@@ -1736,6 +1750,7 @@ def save_detection_metric_charts(
             class_f1.append((2.0 * class_precision[idx] * class_recall[idx] / denom) if denom > 0 else 0.0)
         class_map_5095 = [_sanitize_numeric(entry.get("map@50:95")) or 0.0 for entry in ordered]
         class_map_50 = [_sanitize_numeric(entry.get("map@50")) or 0.0 for entry in ordered]
+        class_map_75 = [_sanitize_numeric(_get_first_present(entry, "map@75", "map75")) or 0.0 for entry in ordered]
 
         indices = np.arange(len(class_names))
         height = 0.4
@@ -1759,8 +1774,17 @@ def save_detection_metric_charts(
 
         if _flag("per_class_ap", True):
             fig, ax = plt.subplots(figsize=(10, max(6, len(class_names) * 0.35)))
-            bars_5095 = ax.barh(indices - height / 2, class_map_5095, height, label="mAP@0.5:0.95")
-            bars_50 = ax.barh(indices + height / 2, class_map_50, height, label="mAP@0.5")
+            ap_series = [
+                ("mAP@0.5", class_map_50),
+                ("mAP@0.75", class_map_75),
+                ("mAP@0.5:0.95", class_map_5095),
+            ]
+            ap_group_height = 0.8
+            ap_bar_h = ap_group_height / float(len(ap_series))
+            ap_offsets = (np.arange(len(ap_series)) - (len(ap_series) - 1) / 2.0) * ap_bar_h
+            ap_bars = []
+            for ap_idx, (name, values) in enumerate(ap_series):
+                ap_bars.append(ax.barh(indices + ap_offsets[ap_idx], values, ap_bar_h, label=name))
             ax.set_xlabel("AP")
             ax.set_title("Per-Class AP")
             ax.set_yticks(indices)
@@ -1768,18 +1792,19 @@ def save_detection_metric_charts(
             ax.set_xlim(0, 1)
             ax.legend()
             if annotate_bars and len(class_names) <= max_annotate_classes:
-                _annotate_barh(ax, bars_5095, fmt="{:.3f}", dx=0.01, fontsize=7)
-                _annotate_barh(ax, bars_50, fmt="{:.3f}", dx=0.01, fontsize=7)
+                for bars in ap_bars:
+                    _annotate_barh(ax, bars, fmt="{:.3f}", dx=0.01, fontsize=7)
             fig.tight_layout()
             _save_figure(fig, charts_dir / f"{prefix}_per_class_ap.png")
             plt.close(fig)
 
-        # 一张图汇总各类别多指标：Precision/Recall/F1/mAP@0.5/mAP@0.5:0.95
+        # 一张图汇总各类别多指标：Precision/Recall/F1/mAP@0.5/mAP@0.75/mAP@0.5:0.95
         metric_series = [
             ("Precision", class_precision),
             ("Recall", class_recall),
             ("F1", class_f1),
             ("mAP@0.5", class_map_50),
+            ("mAP@0.75", class_map_75),
             ("mAP@0.5:0.95", class_map_5095),
         ]
         n_metrics = len(metric_series)

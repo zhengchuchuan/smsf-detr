@@ -15,6 +15,7 @@ import torch.nn.functional as F
 
 from .common import FrozenBatchNorm2d
 from .eemsa import EEMSA
+from .ms_band_sep import MSBandSeparatedStemAlign
 from ..core import register
 import logging
 
@@ -483,7 +484,8 @@ class HGNetv2(nn.Module):
                  freeze_norm=True,
                  pretrained=True,
                  local_model_dir='weight/hgnetv2/',
-                 eemsa: Mapping[str, Any] | None = None):
+                 eemsa: Mapping[str, Any] | None = None,
+                 ms_band_sep: Mapping[str, Any] | None = None):
         super().__init__()
         self.use_lab = use_lab
         self.return_idx = return_idx
@@ -508,6 +510,39 @@ class HGNetv2(nn.Module):
                 mid_chs=stem_channels[1],
                 out_chs=stem_channels[2],
                 use_lab=use_lab)
+
+        # Optional MSI-only band-separated stem + CRGGA alignment for strict single-stream runs.
+        ms_band_sep_cfg: dict[str, Any] = {}
+        if ms_band_sep is not None:
+            if isinstance(ms_band_sep, Mapping):
+                ms_band_sep_cfg = dict(ms_band_sep)
+            elif hasattr(ms_band_sep, "items"):
+                ms_band_sep_cfg = {k: v for k, v in ms_band_sep.items()}  # type: ignore[assignment]
+            else:
+                raise TypeError(f"Unsupported ms_band_sep type: {type(ms_band_sep)}")
+        self.ms_band_sep_cfg = ms_band_sep_cfg
+        self.ms_band_sep_enabled = bool(ms_band_sep_cfg.get("enabled", ms_band_sep_cfg.get("enable", False)))
+        self.ms_band_sep_stem: MSBandSeparatedStemAlign | None = None
+        if self.ms_band_sep_enabled:
+            c2_in_channels = int(next(iter(stage_config.values()))[0])
+            embed_channels = int(ms_band_sep_cfg.get("embed_channels", ms_band_sep_cfg.get("c_emb", 16)) or 16)
+            embed_use_bn = bool(ms_band_sep_cfg.get("embed_use_bn", True))
+            align_cfg_raw = ms_band_sep_cfg.get("align", ms_band_sep_cfg.get("align_cfg", None))
+            align_cfg: dict[str, Any] | None = None
+            if isinstance(align_cfg_raw, Mapping):
+                align_cfg = dict(align_cfg_raw)
+            elif align_cfg_raw is not None and hasattr(align_cfg_raw, "items"):
+                align_cfg = {k: v for k, v in align_cfg_raw.items()}  # type: ignore[assignment]
+            self.ms_band_sep_stem = MSBandSeparatedStemAlign(
+                ms_in_chs=input_channels,
+                c2_in_channels=c2_in_channels,
+                embed_channels=embed_channels,
+                embed_use_bn=embed_use_bn,
+                align_cfg=align_cfg,
+            )
+            # The original stem is bypassed once ms_band_sep is enabled; freeze it to avoid DDP unused params.
+            for p in self.stem.parameters():
+                p.requires_grad_(False)
 
         # Optional EEMSA (Edge-Enhanced Multi-Scale Attention) at stem / selected stages.
         self.eemsa_stem: EEMSA | None = None
@@ -695,7 +730,15 @@ class HGNetv2(nn.Module):
             p.requires_grad = False
 
     def forward(self, x):
-        x = self.stem(x)
+        aux_losses: dict[str, torch.Tensor] = {}
+        if self.ms_band_sep_enabled and self.ms_band_sep_stem is not None:
+            out = self.ms_band_sep_stem(x)
+            if self.training and isinstance(out, tuple) and len(out) == 2:
+                x, aux_losses = out
+            else:
+                x = out[0] if isinstance(out, tuple) else out
+        else:
+            x = self.stem(x)
         if self.eemsa_stem is not None:
             x = self.eemsa_stem(x)
         outs = []
@@ -706,4 +749,6 @@ class HGNetv2(nn.Module):
                 x = self.eemsa_stage_modules[edge_key](x)
             if idx in self.return_idx:
                 outs.append(x)
+        if self.training and aux_losses:
+            return outs, {k: v for k, v in aux_losses.items() if torch.is_tensor(v)}
         return outs

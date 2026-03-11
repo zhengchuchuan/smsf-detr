@@ -373,6 +373,16 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
         overrides["HGNetv2"]["local_model_dir"] = str(hgnet_local_model_dir)
     if eemsa_cfg is not None:
         overrides["HGNetv2"]["eemsa"] = eemsa_cfg
+    if (not dual_stream_backbone) and ms_band_sep_cfg is not None:
+        if rgb_channels == 0 and ms_channels > 0:
+            overrides["HGNetv2"]["ms_band_sep"] = ms_band_sep_cfg
+        elif bool(ms_band_sep_cfg.get("enabled", ms_band_sep_cfg.get("enable", False))):
+            logging.warning(
+                "检测到 backbone_ms_band_sep，但当前不是 MSI-only 单流输入(rgb_channels=%d, ms_channels=%d)，"
+                "将忽略该配置。",
+                rgb_channels,
+                ms_channels,
+            )
 
     if dual_stream_backbone:
         # 需要从 vendored YAML 中读取 HGNetv2 的基础超参（name/return_idx/use_lab），避免硬编码各尺度配置。

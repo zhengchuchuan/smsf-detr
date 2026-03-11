@@ -7,7 +7,7 @@ defaults:
 data:
   # Same dataset as oil_rgb_msi_20260202_3cls, but MSI-only (7-channel TIF).
   dataset_name: oil_msi_20260202_3cls
-  dataset_dir: data/oil_20260202
+  dataset_dir: data/oil_20260202_3cls
   val_split: val
   # Used for COCO category remap / evaluation mapping / visualization.
   class_names: ["oil", "building", "machine"]

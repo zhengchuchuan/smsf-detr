@@ -1,1 +1,0 @@
-python main.py --opts runtime.device_ids=[1] --config 'configs/task/rtmsfdetr/oil_rgb_msi_20260115_3cls/rtmsfdetr_oil_rgb_msi_20260115_det_rtv4_hgnetv2_m_distill_dualstream_c2former_postblock_add_wbadd_c3c4c5_msbandsep_c2align_infonce_reg_globalkv_pos2d.yaml'

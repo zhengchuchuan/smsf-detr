@@ -27,6 +27,12 @@ class WandbMetricLogger:
 
         metrics = {}
 
+        def _get_first_present(*keys: str) -> Any:
+            for key in keys:
+                if key in results_json:
+                    return results_json.get(key)
+            return None
+
         def _maybe_add(name: str, value: Any):
             numeric = self._safe_float(value)
             if numeric is not None:
@@ -36,7 +42,8 @@ class WandbMetricLogger:
         _maybe_add("Recall", results_json.get("recall"))
         _maybe_add("F1", results_json.get("f1"))
         _maybe_add("mAP50", results_json.get("map"))
-        _maybe_add("mAP50_95", results_json.get("map@50:95") or results_json.get("map50_95"))
+        _maybe_add("mAP75", _get_first_present("map@75", "map75"))
+        _maybe_add("mAP50_95", _get_first_present("map@50:95", "map50_95"))
         _maybe_add("ScoreThreshold", results_json.get("score_threshold"))
 
         return metrics

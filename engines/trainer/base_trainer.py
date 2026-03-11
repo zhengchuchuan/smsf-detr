@@ -1669,7 +1669,7 @@ class BaseTrainer:
                 payload["best_metric_weights"] = dict(best_metric_weights)
             if val_stats:
                 # 仅落盘少量常用指标，避免把超长曲线塞到记录文件里。
-                for k in ("val_loss", "val_map50", "val_map50_95", "loss", "map50", "map50_95", "precision", "recall"):
+                for k in ("val_loss", "val_map50", "val_map75", "val_map50_95", "loss", "map50", "map75", "map50_95", "precision", "recall"):
                     if k in val_stats:
                         payload[k] = val_stats.get(k)
             try:
@@ -1692,6 +1692,10 @@ class BaseTrainer:
                 "map50": "map50",
                 "map@50": "map50",
                 "ap50": "map50",
+                "map75": "map75",
+                "map@75": "map75",
+                "map@0.75": "map75",
+                "ap75": "map75",
                 "map50_95": "map50_95",
                 "map50-95": "map50_95",
                 "map@50:95": "map50_95",
@@ -2272,16 +2276,25 @@ class BaseTrainer:
             """
 
             iou_thrs, rec_thrs = coco_eval.params.iouThrs, coco_eval.params.recThrs
-            iou50_idx, area_idx, maxdet_idx = (
-                int(np.argwhere(np.isclose(iou_thrs, 0.50))), 0, 2)
+
+            def _find_iou_idx(target: float) -> int | None:
+                matches = np.argwhere(np.isclose(iou_thrs, target))
+                if matches.size <= 0:
+                    return None
+                return int(matches.reshape(-1)[0])
+
+            iou50_idx = _find_iou_idx(0.50)
+            iou75_idx = _find_iou_idx(0.75)
+            area_idx, maxdet_idx = 0, 2
 
             P = coco_eval.eval.get("precision")
             S = coco_eval.eval.get("scores")
 
-            if P is None:
+            if P is None or iou50_idx is None:
                 return {
                     "class_map": [],
                     "map": float("nan"),
+                    "map@75": float("nan"),
                     "precision": float("nan"),
                     "recall": float("nan"),
                     "f1": float("nan"),
@@ -2387,6 +2400,11 @@ class BaseTrainer:
                 valid   = p_slice > -1
                 ap_50_95 = float(p_slice[valid].mean()) if valid.any() else float("nan")
                 ap_50    = float(p_slice[iou50_idx][p_slice[iou50_idx] > -1].mean()) if (p_slice[iou50_idx] > -1).any() else float("nan")
+                ap_75    = (
+                    float(p_slice[iou75_idx][p_slice[iou75_idx] > -1].mean())
+                    if iou75_idx is not None and (p_slice[iou75_idx] > -1).any()
+                    else float("nan")
+                )
 
                 score_k = None
                 score_idx_k = None
@@ -2417,6 +2435,7 @@ class BaseTrainer:
                     "class"      : cat_id_to_name[int(cid)],
                     "map@50:95"  : ap_50_95,
                     "map@50"     : ap_50,
+                    "map@75"     : ap_75,
                     "precision"  : pc,
                     "recall"     : rc,
                     "f1"         : f1_value,
@@ -2429,6 +2448,7 @@ class BaseTrainer:
                 "class"     : "all",
                 "map@50:95" : map_50_95,
                 "map@50"    : map_50,
+                "map@75"    : map_75,
                 "precision" : macro_precision,
                 "recall"    : macro_recall,
                 "f1"        : macro_f1_all,
@@ -3131,6 +3151,7 @@ class BaseTrainer:
             if "bbox" in iou_types and "bbox" in coco_evaluator.coco_eval:
                 stats["coco_eval_bbox"] = coco_evaluator.coco_eval["bbox"].stats.tolist()
                 stats["map50"] = results_json.get("map")
+                stats["map75"] = results_json.get("map@75") if "map@75" in results_json else results_json.get("map75")
                 stats["map50_95"] = (
                     results_json.get("map@50:95")
                     if "map@50:95" in results_json
@@ -3144,10 +3165,16 @@ class BaseTrainer:
                 stats["results_json_segm"] = results_json
                 self._last_eval_artifacts["results_json_segm"] = results_json
                 stats["map50_mask"] = results_json.get("map")
-                stats["map50_95_mask"] = results_json.get("map@50:95") or results_json.get("map50_95")
+                stats["map75_mask"] = results_json.get("map@75") if "map@75" in results_json else results_json.get("map75")
+                stats["map50_95_mask"] = (
+                    results_json.get("map@50:95")
+                    if "map@50:95" in results_json
+                    else results_json.get("map50_95")
+                )
                 self._last_eval_artifacts["coco_eval_segm"] = coco_evaluator.coco_eval["segm"]
         # 终端打印关键信息，训练中即可看到 mAP。
         map50 = stats.get("map50")
+        map75 = stats.get("map75")
         map50_95 = stats.get("map50_95")
         if map50 is not None and map50_95 is not None:
             summary_prefix = "Test" if split_prefix == "test" else "Val"
@@ -3158,9 +3185,10 @@ class BaseTrainer:
                 or float("nan")
             )
             logging.info(
-                "%s Summary - mAP@0.5: %.4f  mAP@0.5:0.95: %.4f  loss: %.4f",
+                "%s Summary - mAP@0.5: %.4f  mAP@0.75: %.4f  mAP@0.5:0.95: %.4f  loss: %.4f",
                 summary_prefix,
                 map50,
+                float(map75) if map75 is not None else float("nan"),
                 map50_95,
                 float(loss_value),
             )

@@ -1,0 +1,33 @@
+# @package _global_
+
+# 双流等价基线（SMSFDETR）：
+# - 数据集: oil_rgb_msi_20260202_3cls
+# - 先保持与 RTMSFDETR 双流配置等价，便于后续再逐步集成新模块
+defaults:
+  - /data/oil_rgb_msi_20260202_3cls
+  - /model/smsfdetr/rtv4_hgnetv2_m_distill
+  - /model/smsfdetr/modules/asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+  - /model/smsfdetr/modules/no_crgga
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+  batch_size: 8
+  epochs: 100
+  num_classes: 3
+  # Align to RT-DETRv4-M recipe.
+  # lr: 0.0005
+  # weight_decay: 0.0001
+  # optimizer_param_groups:
+  #   - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+  #     lr: 0.00004
+  #   - params: '^(?=.*(?:norm|bn)).*$'
+  #     weight_decay: 0.0
+  # flat_epoch: 49
+  # no_aug_epoch: 12

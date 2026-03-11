@@ -59,6 +59,42 @@ class RtmsfDetrTrainer(BaseTrainer):
                 key = key[len("model.") :]
             return key
 
+        def _expand_input_conv_weight(
+            tensor: torch.Tensor,
+            target: torch.Tensor,
+        ) -> torch.Tensor:
+            """
+            Expand a pretrained RGB input conv to match a different input-channel count.
+
+            This is critical for MSI-only single-stream runs: otherwise `backbone.stem.stem1.conv`
+            falls back to random init when `in_chs != 3`, which is especially harmful on small datasets.
+            """
+            if (
+                tensor.ndim != 4
+                or target.ndim != 4
+                or tensor.shape[0] != target.shape[0]
+                or tensor.shape[2:] != target.shape[2:]
+                or tensor.shape[1] == target.shape[1]
+            ):
+                return tensor
+
+            src_in = int(tensor.shape[1])
+            dst_in = int(target.shape[1])
+            if src_in <= 0 or dst_in <= 0:
+                return tensor
+
+            if dst_in < src_in:
+                if dst_in == 1:
+                    return tensor.mean(dim=1, keepdim=True)
+                return tensor[:, :dst_in]
+
+            expanded = target.new_zeros(target.shape)
+            expanded[:, :src_in] = tensor
+            if dst_in > src_in:
+                mean = tensor.mean(dim=1, keepdim=True)
+                expanded[:, src_in:] = mean.repeat(1, dst_in - src_in, 1, 1)
+            return expanded
+
         def _expand_for_dualstream_backbone(
             state_dict: Mapping[str, torch.Tensor],
             *,
@@ -113,29 +149,48 @@ class RtmsfDetrTrainer(BaseTrainer):
                         and target.ndim == 4
                         and tensor.shape[0] == target.shape[0]
                         and tensor.shape[2:] == target.shape[2:]
-                        and tensor.shape[1] == 3
                         and target.shape[1] == ms_in_chs
                     ):
-                        desired_in = int(ms_in_chs)
-                        if desired_in < 3:
-                            if desired_in == 1:
-                                tensor = tensor.mean(dim=1, keepdim=True)
-                            else:
-                                tensor = tensor[:, :desired_in]
-                        else:
-                            expanded_w = target.new_zeros(target.shape)
-                            expanded_w[:, :3] = tensor
-                            if desired_in > 3:
-                                mean = tensor.mean(dim=1, keepdim=True)
-                                expanded_w[:, 3:] = mean.repeat(1, desired_in - 3, 1, 1)
-                            tensor = expanded_w
+                        tensor = _expand_input_conv_weight(tensor, target)
 
                     expanded[dst_key] = tensor
 
             return expanded
 
+        def _expand_for_single_stream_backbone(
+            state_dict: Mapping[str, torch.Tensor],
+            *,
+            model_state: Mapping[str, torch.Tensor],
+            dst_model: torch.nn.Module,
+        ) -> Dict[str, torch.Tensor]:
+            """
+            Adapt single-stream backbone input conv weights when the target input channels differ
+            from the pretrained 3-channel checkpoint.
+            """
+            backbone = getattr(dst_model, "backbone", None)
+            if backbone is None:
+                return dict(state_dict)
+            if hasattr(backbone, "rgb_backbone") or hasattr(backbone, "ms_backbone"):
+                return dict(state_dict)
+
+            expanded: Dict[str, torch.Tensor] = {}
+            for k, v in state_dict.items():
+                k = _normalize_key(str(k))
+                tensor = v
+                target = model_state.get(k)
+                if (
+                    isinstance(tensor, torch.Tensor)
+                    and target is not None
+                    and isinstance(target, torch.Tensor)
+                    and k.startswith("backbone.")
+                ):
+                    tensor = _expand_input_conv_weight(tensor, target)
+                expanded[k] = tensor
+            return expanded
+
         model_state = model.state_dict()
         raw_state = _expand_for_dualstream_backbone(raw_state, model_state=model_state, dst_model=model)
+        raw_state = _expand_for_single_stream_backbone(raw_state, model_state=model_state, dst_model=model)
         filtered = {}
         skipped = []
         for key, tensor in raw_state.items():

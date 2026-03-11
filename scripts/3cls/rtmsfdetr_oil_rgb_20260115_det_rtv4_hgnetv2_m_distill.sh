@@ -1,1 +1,0 @@
-python main.py --opts runtime.device_ids=[0] --config 'configs/task/rtmsfdetr/oil_rgb_20260115_3cls/rtmsfdetr_oil_rgb_20260115_det_rtv4_hgnetv2_m_distill.yaml'
