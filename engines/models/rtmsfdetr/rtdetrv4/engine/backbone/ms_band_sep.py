@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
@@ -28,6 +28,11 @@ def _gn_groups(num_channels: int, *, max_groups: int = 8, min_channels_per_group
 
 def _make_gn(num_channels: int) -> nn.GroupNorm:
     return nn.GroupNorm(num_groups=_gn_groups(num_channels), num_channels=int(num_channels))
+
+
+def _cfg_value(cfg: Mapping[str, Any], key: str, default: Any) -> Any:
+    value = cfg.get(key, default)
+    return default if value is None else value
 
 
 class _SharedPerBandEmbedding(nn.Module):
@@ -122,30 +127,39 @@ class MSBandSeparatedStemAlign(nn.Module):
 
         self.aligner: GroupwiseDeformableAlign2D | None = None
         if self.align_enabled:
+            ref_mode_raw = str(_cfg_value(cfg, "ref_mode", "spatial_weighted")).strip().lower()
+            if ref_mode_raw in {"fixed", "single_band", "band"}:
+                ref_mode_raw = "fixed_band"
+            if ref_mode_raw not in {"mean", "global_weighted", "spatial_weighted", "fixed_band"}:
+                raise ValueError(
+                    f"Unsupported ref_mode={ref_mode_raw} (supported: mean|global_weighted|spatial_weighted|fixed_band)"
+                )
+            ref_mode = cast(Any, ref_mode_raw)
             self.aligner = GroupwiseDeformableAlign2D(
                 in_channels=self.embed_channels,
-                ref_mode=str(cfg.get("ref_mode", "spatial_weighted") or "spatial_weighted"),
-                num_iters=int(cfg.get("num_iters", 1) or 1),
+                ref_mode=ref_mode,
+                ref_band_index=cfg.get("ref_band_index", cfg.get("ref_channel", None)),
+                num_iters=int(_cfg_value(cfg, "num_iters", 1)),
                 ref_detach=bool(cfg.get("ref_detach", True)),
-                num_keypoints=int(cfg.get("num_keypoints", 9) or 9),
-                offset_scale=float(cfg.get("offset_scale", 3.0) or 3.0),
+                num_keypoints=int(_cfg_value(cfg, "num_keypoints", 9)),
+                offset_scale=float(_cfg_value(cfg, "offset_scale", 3.0)),
                 offset_enabled=bool(cfg.get("offset_enabled", True)),
-                attention_norm=str(cfg.get("attention_norm", "softmax") or "softmax"),
-                padding_mode=str(cfg.get("padding_mode", "border") or "border"),
+                attention_norm=str(_cfg_value(cfg, "attention_norm", "softmax")),
+                padding_mode=str(_cfg_value(cfg, "padding_mode", "border")),
                 align_corners=bool(cfg.get("align_corners", True)),
-                loss_type=str(cfg.get("loss_type", "infonce") or "infonce"),
+                loss_type=str(_cfg_value(cfg, "loss_type", "infonce")),
                 loss_downsample=cfg.get("loss_downsample", 0.5),
-                nce_num_patches=int(cfg.get("nce_num_patches", 64) or 64),
-                nce_patch_size=int(cfg.get("nce_patch_size", 5) or 5),
-                nce_tau=float(cfg.get("nce_tau", 0.2) or 0.2),
+                nce_num_patches=int(_cfg_value(cfg, "nce_num_patches", 64)),
+                nce_patch_size=int(_cfg_value(cfg, "nce_patch_size", 5)),
+                nce_tau=float(_cfg_value(cfg, "nce_tau", 0.2)),
                 affine_enabled=bool(cfg.get("affine_enabled", cfg.get("affine", False))),
-                affine_scale=float(cfg.get("affine_scale", 0.1) or 0.1),
+                affine_scale=float(_cfg_value(cfg, "affine_scale", 0.1)),
                 affine_init_identity=bool(cfg.get("affine_init_identity", True)),
-                affine_type=str(cfg.get("affine_type", "affine") or "affine"),
-                loss_weight=float(cfg.get("loss_weight", 0.02) or 0.02),
-                loss_offset_weight=float(cfg.get("loss_offset_weight", 0.01) or 0.01),
-                loss_attn_norm_weight=float(cfg.get("loss_attn_norm_weight", 0.0) or 0.0),
-                loss_attn_entropy_weight=float(cfg.get("loss_attn_entropy_weight", 0.001) or 0.001),
+                affine_type=str(_cfg_value(cfg, "affine_type", "affine")),
+                loss_weight=float(_cfg_value(cfg, "loss_weight", 0.02)),
+                loss_offset_weight=float(_cfg_value(cfg, "loss_offset_weight", 0.01)),
+                loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
+                loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
             )
 
         merge_in = int(self.ms_in_chs * self.embed_channels)
@@ -162,14 +176,17 @@ class MSBandSeparatedStemAlign(nn.Module):
         if c != self.ms_in_chs:
             raise ValueError(f"Channel mismatch: expected ms_in_chs={self.ms_in_chs}, got C={c}")
 
-        z = self.embed(ms)  # (B, N, Cemb, H/4, W/4)
+        z: torch.Tensor = self.embed(ms)  # (B, N, Cemb, H/4, W/4)
         aux_losses: dict[str, torch.Tensor] = {}
         if self.aligner is not None:
             out = self.aligner(z)
-            if self.training and isinstance(out, tuple) and len(out) == 2:
-                z, aux_losses = out
+            if self.training and isinstance(out, tuple) and len(out) >= 2 and torch.is_tensor(out[0]) and isinstance(out[1], dict):
+                z = out[0]
+                aux_losses = out[1]
             else:
-                z = out  # type: ignore[assignment]
+                z = out[0] if isinstance(out, tuple) else out
+            if not torch.is_tensor(z):
+                raise RuntimeError("Unexpected aligner output type in MSBandSeparatedStemAlign")
 
         z_flat = z.reshape(b, self.ms_in_chs * self.embed_channels, z.shape[-2], z.shape[-1])
         y = self.merge(z_flat)

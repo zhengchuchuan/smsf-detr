@@ -15,6 +15,7 @@ import torch.nn.functional as F
 
 from .common import FrozenBatchNorm2d
 from .eemsa import EEMSA
+from .group_deform_align import GroupwiseDeformableAlign2D, ProjectedGroupwiseDeformableAlign2D
 from .ms_band_sep import MSBandSeparatedStemAlign
 from ..core import register
 import logging
@@ -59,6 +60,26 @@ def _parse_eemsa_locations(value: Any) -> set[str]:
                 "(aliases: c2/c3/c4/c5)."
             )
     return out
+
+
+def _cfg_value(cfg: Mapping[str, Any], key: str, default: Any) -> Any:
+    value = cfg.get(key, default)
+    return default if value is None else value
+
+
+def _normalize_stage_idx(key: Any) -> int:
+    if isinstance(key, str):
+        kk = key.strip().lower()
+        if kk in {"c2", "p2", "stage1", "stage_1"}:
+            return 0
+        if kk in {"c3", "p3", "stage2", "stage_2"}:
+            return 1
+        if kk in {"c4", "p4", "stage3", "stage_3"}:
+            return 2
+        if kk in {"c5", "p5", "stage4", "stage_4"}:
+            return 3
+        return int(kk)
+    return int(key)
 
 
 class LearnableAffineBlock(nn.Module):
@@ -485,7 +506,8 @@ class HGNetv2(nn.Module):
                  pretrained=True,
                  local_model_dir='weight/hgnetv2/',
                  eemsa: Mapping[str, Any] | None = None,
-                 ms_band_sep: Mapping[str, Any] | None = None):
+                 ms_band_sep: Mapping[str, Any] | None = None,
+                 ms_group_align: Mapping[str, Any] | None = None):
         super().__init__()
         self.use_lab = use_lab
         self.return_idx = return_idx
@@ -499,10 +521,14 @@ class HGNetv2(nn.Module):
         stem_channels = list(self.arch_configs[name]['stem_channels'])
         stem_channels[0] = input_channels
         stage_config = self.arch_configs[name]['stage_config']
+        stage_keys = list(stage_config.keys())
+        stage_in_channels = [int(stage_config[k][0]) for k in stage_keys]
+        stage_out_channels = [int(stage_config[k][2]) for k in stage_keys]
         download_url = self.arch_configs[name]['url']
 
         self._out_strides = [4, 8, 16, 32]
         self._out_channels = [stage_config[k][2] for k in stage_config]
+        self.ms_in_chs = input_channels
 
         # stem
         self.stem = StemBlock(
@@ -544,6 +570,233 @@ class HGNetv2(nn.Module):
             for p in self.stem.parameters():
                 p.requires_grad_(False)
 
+        # Optional CRGGA on MSI-only single-stream inputs.
+        # - input_enabled: align raw MS bands before the original stem, keeping the stem unchanged.
+        # - enabled: align projected stage features (B,C,H,W) at selected stages.
+        ms_group_align_cfg: dict[str, Any] = {}
+        if ms_group_align is not None:
+            if isinstance(ms_group_align, Mapping):
+                ms_group_align_cfg = dict(ms_group_align)
+            elif hasattr(ms_group_align, "items"):
+                ms_group_align_cfg = {k: v for k, v in ms_group_align.items()}  # type: ignore[assignment]
+            else:
+                raise TypeError(f"Unsupported ms_group_align type: {type(ms_group_align)}")
+        self.ms_group_align_cfg = ms_group_align_cfg
+        self.ms_group_align_enabled = bool(ms_group_align_cfg.get("enabled", ms_group_align_cfg.get("enable", False)))
+        self.ms_group_align_input_enabled = bool(
+            ms_group_align_cfg.get("input_enabled", ms_group_align_cfg.get("input_enable", False))
+        )
+        group_position_norm = str(ms_group_align_cfg.get("position", "pre_block") or "pre_block").strip().lower()
+        if group_position_norm in {"pre", "pre_block", "before", "before_block"}:
+            group_position_norm = "pre_block"
+        elif group_position_norm in {"post", "post_block", "after", "after_block"}:
+            group_position_norm = "post_block"
+        else:
+            raise ValueError(
+                "Unsupported ms_group_align.position; expected pre_block/post_block, "
+                f"got {ms_group_align_cfg.get('position')}"
+            )
+        self.ms_group_align_position = group_position_norm
+
+        stage_idx_raw = ms_group_align_cfg.get("stage_idx", ms_group_align_cfg.get("stages", None))
+        if stage_idx_raw is None:
+            ms_group_stage_idx = [0] if self.ms_group_align_enabled else []
+        elif isinstance(stage_idx_raw, (list, tuple)) or (
+            hasattr(stage_idx_raw, "__iter__") and not isinstance(stage_idx_raw, (str, bytes))
+        ):
+            ms_group_stage_idx = [_normalize_stage_idx(v) for v in list(stage_idx_raw)]
+        else:
+            ms_group_stage_idx = [_normalize_stage_idx(stage_idx_raw)]
+        dedup_group_stage: list[int] = []
+        for stage_i in ms_group_stage_idx:
+            if int(stage_i) not in dedup_group_stage:
+                dedup_group_stage.append(int(stage_i))
+        self.ms_group_align_stage_idx = dedup_group_stage
+
+        self.ms_group_input_aligner: GroupwiseDeformableAlign2D | None = None
+        self.ms_group_aligners = nn.ModuleDict()
+        if self.ms_in_chs <= 0:
+            self.ms_group_align_enabled = False
+            self.ms_group_align_input_enabled = False
+        else:
+            ref_mode = str(_cfg_value(ms_group_align_cfg, "ref_mode", "spatial_weighted"))
+            ref_band_index = ms_group_align_cfg.get("ref_band_index", ms_group_align_cfg.get("ref_channel", None))
+            num_iters = int(_cfg_value(ms_group_align_cfg, "num_iters", 1))
+            ref_detach = bool(ms_group_align_cfg.get("ref_detach", False))
+            num_keypoints = int(_cfg_value(ms_group_align_cfg, "num_keypoints", 5))
+            offset_scale = float(_cfg_value(ms_group_align_cfg, "offset_scale", 6.0))
+            offset_enabled = bool(ms_group_align_cfg.get("offset_enabled", True))
+            attention_norm = str(_cfg_value(ms_group_align_cfg, "attention_norm", "sigmoid"))
+            padding_mode = str(_cfg_value(ms_group_align_cfg, "padding_mode", "border"))
+            align_corners = bool(ms_group_align_cfg.get("align_corners", True))
+            loss_type = str(_cfg_value(ms_group_align_cfg, "loss_type", "infonce"))
+            loss_downsample = ms_group_align_cfg.get("loss_downsample", None)
+            nce_num_patches = int(_cfg_value(ms_group_align_cfg, "nce_num_patches", 64))
+            nce_patch_size = int(_cfg_value(ms_group_align_cfg, "nce_patch_size", 5))
+            nce_tau = float(_cfg_value(ms_group_align_cfg, "nce_tau", 0.2))
+            affine_enabled = bool(ms_group_align_cfg.get("affine_enabled", ms_group_align_cfg.get("affine", False)))
+            affine_scale = float(_cfg_value(ms_group_align_cfg, "affine_scale", 0.1))
+            affine_init_identity = bool(ms_group_align_cfg.get("affine_init_identity", True))
+            affine_type = str(_cfg_value(ms_group_align_cfg, "affine_type", "affine"))
+            loss_weight = float(_cfg_value(ms_group_align_cfg, "loss_weight", 0.02))
+            loss_offset_weight = float(
+                _cfg_value(
+                    ms_group_align_cfg,
+                    "loss_offset_weight",
+                    _cfg_value(
+                        ms_group_align_cfg,
+                        "offset_loss_weight",
+                        _cfg_value(ms_group_align_cfg, "offset_reg_weight", 0.0),
+                    ),
+                )
+            )
+            loss_attn_norm_weight = float(
+                _cfg_value(
+                    ms_group_align_cfg,
+                    "loss_attn_norm_weight",
+                    _cfg_value(
+                        ms_group_align_cfg,
+                        "attn_norm_weight",
+                        _cfg_value(ms_group_align_cfg, "attn_reg_weight", 0.0),
+                    ),
+                )
+            )
+            loss_attn_entropy_weight = float(
+                _cfg_value(
+                    ms_group_align_cfg,
+                    "loss_attn_entropy_weight",
+                    _cfg_value(
+                        ms_group_align_cfg,
+                        "attn_entropy_weight",
+                        _cfg_value(ms_group_align_cfg, "attn_entropy_reg_weight", 0.0),
+                    ),
+                )
+            )
+
+            if self.ms_group_align_input_enabled:
+                input_ref_mode = str(_cfg_value(ms_group_align_cfg, "input_ref_mode", ref_mode))
+                input_ref_band_index = ms_group_align_cfg.get(
+                    "input_ref_band_index",
+                    ms_group_align_cfg.get("input_ref_channel", ref_band_index),
+                )
+                input_num_iters = int(_cfg_value(ms_group_align_cfg, "input_num_iters", num_iters))
+                input_ref_detach = bool(_cfg_value(ms_group_align_cfg, "input_ref_detach", ref_detach))
+                input_num_keypoints = int(_cfg_value(ms_group_align_cfg, "input_num_keypoints", num_keypoints))
+                input_offset_scale = float(_cfg_value(ms_group_align_cfg, "input_offset_scale", offset_scale))
+                input_offset_enabled = bool(
+                    _cfg_value(
+                        ms_group_align_cfg,
+                        "input_offset_enabled",
+                        _cfg_value(ms_group_align_cfg, "input_use_offset", offset_enabled),
+                    )
+                )
+                input_attention_norm = str(_cfg_value(ms_group_align_cfg, "input_attention_norm", attention_norm))
+                input_padding_mode = str(_cfg_value(ms_group_align_cfg, "input_padding_mode", padding_mode))
+                input_align_corners = bool(_cfg_value(ms_group_align_cfg, "input_align_corners", align_corners))
+                input_loss_type = str(_cfg_value(ms_group_align_cfg, "input_loss_type", loss_type))
+                input_loss_downsample = ms_group_align_cfg.get("input_loss_downsample", loss_downsample)
+                input_nce_num_patches = int(_cfg_value(ms_group_align_cfg, "input_nce_num_patches", nce_num_patches))
+                input_nce_patch_size = int(_cfg_value(ms_group_align_cfg, "input_nce_patch_size", nce_patch_size))
+                input_nce_tau = float(_cfg_value(ms_group_align_cfg, "input_nce_tau", nce_tau))
+                input_affine_enabled = bool(
+                    _cfg_value(
+                        ms_group_align_cfg,
+                        "input_affine_enabled",
+                        _cfg_value(ms_group_align_cfg, "input_affine", affine_enabled),
+                    )
+                )
+                input_affine_scale = float(_cfg_value(ms_group_align_cfg, "input_affine_scale", affine_scale))
+                input_affine_init_identity = bool(
+                    _cfg_value(ms_group_align_cfg, "input_affine_init_identity", affine_init_identity)
+                )
+                input_affine_type = str(_cfg_value(ms_group_align_cfg, "input_affine_type", affine_type))
+                input_loss_weight = float(_cfg_value(ms_group_align_cfg, "input_loss_weight", loss_weight))
+                input_loss_offset_weight = float(
+                    _cfg_value(ms_group_align_cfg, "input_loss_offset_weight", loss_offset_weight)
+                )
+                input_loss_attn_norm_weight = float(
+                    _cfg_value(ms_group_align_cfg, "input_loss_attn_norm_weight", loss_attn_norm_weight)
+                )
+                input_loss_attn_entropy_weight = float(
+                    _cfg_value(ms_group_align_cfg, "input_loss_attn_entropy_weight", loss_attn_entropy_weight)
+                )
+
+                self.ms_group_input_aligner = GroupwiseDeformableAlign2D(
+                    in_channels=1,
+                    ref_mode=input_ref_mode,
+                    ref_band_index=input_ref_band_index,
+                    num_iters=input_num_iters,
+                    ref_detach=input_ref_detach,
+                    num_keypoints=input_num_keypoints,
+                    offset_scale=input_offset_scale,
+                    offset_enabled=input_offset_enabled,
+                    attention_norm=input_attention_norm,
+                    padding_mode=input_padding_mode,
+                    align_corners=input_align_corners,
+                    loss_type=input_loss_type,
+                    loss_downsample=input_loss_downsample,
+                    nce_num_patches=input_nce_num_patches,
+                    nce_patch_size=input_nce_patch_size,
+                    nce_tau=input_nce_tau,
+                    affine_enabled=input_affine_enabled,
+                    affine_scale=input_affine_scale,
+                    affine_init_identity=input_affine_init_identity,
+                    affine_type=input_affine_type,
+                    loss_weight=input_loss_weight,
+                    loss_offset_weight=input_loss_offset_weight,
+                    loss_attn_norm_weight=input_loss_attn_norm_weight,
+                    loss_attn_entropy_weight=input_loss_attn_entropy_weight,
+                )
+
+            if self.ms_group_align_enabled:
+                num_groups_raw = ms_group_align_cfg.get("num_groups", ms_group_align_cfg.get("groups", self.ms_in_chs))
+                group_channels_raw = ms_group_align_cfg.get(
+                    "group_channels",
+                    ms_group_align_cfg.get("proj_channels", 8),
+                )
+                num_groups = self.ms_in_chs if num_groups_raw is None else int(num_groups_raw)
+                group_channels = 8 if group_channels_raw is None else int(group_channels_raw)
+                if num_groups <= 1:
+                    raise ValueError(f"ms_group_align.num_groups must be > 1, got {num_groups}")
+                if group_channels <= 0:
+                    raise ValueError(f"ms_group_align.group_channels must be > 0, got {group_channels}")
+
+                stage_channels = stage_out_channels if self.ms_group_align_position == "post_block" else stage_in_channels
+                for stage_i in self.ms_group_align_stage_idx:
+                    if stage_i < 0 or stage_i >= len(stage_channels):
+                        raise ValueError(
+                            f"ms_group_align.stage_idx contains invalid stage idx {stage_i} (num_stages={len(stage_channels)})"
+                        )
+                    in_channels = int(stage_channels[int(stage_i)])
+                    self.ms_group_aligners[str(stage_i)] = ProjectedGroupwiseDeformableAlign2D(
+                        in_channels=in_channels,
+                        num_groups=num_groups,
+                        group_channels=group_channels,
+                        ref_mode=ref_mode,
+                        ref_band_index=ref_band_index,
+                        num_iters=num_iters,
+                        ref_detach=ref_detach,
+                        num_keypoints=num_keypoints,
+                        offset_scale=offset_scale,
+                        offset_enabled=offset_enabled,
+                        attention_norm=attention_norm,
+                        padding_mode=padding_mode,
+                        align_corners=align_corners,
+                        loss_type=loss_type,
+                        loss_downsample=loss_downsample,
+                        nce_num_patches=nce_num_patches,
+                        nce_patch_size=nce_patch_size,
+                        nce_tau=nce_tau,
+                        affine_enabled=affine_enabled,
+                        affine_scale=affine_scale,
+                        affine_init_identity=affine_init_identity,
+                        affine_type=affine_type,
+                        loss_weight=loss_weight,
+                        loss_offset_weight=loss_offset_weight,
+                        loss_attn_norm_weight=loss_attn_norm_weight,
+                        loss_attn_entropy_weight=loss_attn_entropy_weight,
+                    )
+
         # Optional EEMSA (Edge-Enhanced Multi-Scale Attention) at stem / selected stages.
         self.eemsa_stem: EEMSA | None = None
         self.eemsa_stage_modules = nn.ModuleDict()
@@ -578,7 +831,6 @@ class HGNetv2(nn.Module):
                 use_eca = bool(eemsa_cfg.get("use_eca", True))
                 eca_kernel_size = int(eemsa_cfg.get("eca_kernel_size", 3) or 3)
                 alpha_init = float(eemsa_cfg.get("alpha_init", 0.1) or 0.1)
-                stage_keys = list(stage_config.keys())
 
                 if "stem" in locations:
                     self.eemsa_stem = EEMSA(
@@ -729,12 +981,66 @@ class HGNetv2(nn.Module):
         for p in m.parameters():
             p.requires_grad = False
 
+    @staticmethod
+    def _merge_aux_losses(
+        aux_losses: dict[str, torch.Tensor],
+        new_losses: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        for key, value in new_losses.items():
+            if torch.is_tensor(value):
+                aux_losses[key] = aux_losses.get(key, 0.0) + value
+        return aux_losses
+
+    def _apply_ms_group_input_alignment(
+        self,
+        x: torch.Tensor,
+        aux_losses: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if not self.ms_group_align_input_enabled:
+            return x, aux_losses
+        if self.ms_group_input_aligner is None:
+            raise RuntimeError("Missing ms_group_input_aligner")
+        out = self.ms_group_input_aligner(x.unsqueeze(2))
+        if self.training and isinstance(out, tuple) and len(out) == 2:
+            x_aligned, stage_losses = out
+            aux_losses = self._merge_aux_losses(aux_losses, stage_losses)
+        else:
+            x_aligned = out
+        return x_aligned.squeeze(2), aux_losses
+
+    def _apply_ms_group_alignment(
+        self,
+        idx: int,
+        x: torch.Tensor,
+        aux_losses: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if not self.ms_group_align_enabled or idx not in self.ms_group_align_stage_idx:
+            return x, aux_losses
+        key = str(idx)
+        if key not in self.ms_group_aligners:
+            raise RuntimeError(f"Missing ms_group_align module for stage idx {idx}")
+        aligner = self.ms_group_aligners[key]
+        if self.training:
+            out = aligner(x)
+            if isinstance(out, tuple) and len(out) == 2:
+                x_aligned, stage_losses = out
+                aux_losses = self._merge_aux_losses(aux_losses, stage_losses)
+                x = x_aligned
+            else:
+                x = out  # pragma: no cover
+        else:
+            out = aligner(x)
+            x = out[0] if isinstance(out, tuple) else out
+        return x, aux_losses
+
     def forward(self, x):
         aux_losses: dict[str, torch.Tensor] = {}
+        x, aux_losses = self._apply_ms_group_input_alignment(x, aux_losses)
         if self.ms_band_sep_enabled and self.ms_band_sep_stem is not None:
             out = self.ms_band_sep_stem(x)
             if self.training and isinstance(out, tuple) and len(out) == 2:
-                x, aux_losses = out
+                x, stage_losses = out
+                aux_losses = self._merge_aux_losses(aux_losses, stage_losses)
             else:
                 x = out[0] if isinstance(out, tuple) else out
         else:
@@ -743,7 +1049,11 @@ class HGNetv2(nn.Module):
             x = self.eemsa_stem(x)
         outs = []
         for idx, stage in enumerate(self.stages):
+            if self.ms_group_align_position == "pre_block":
+                x, aux_losses = self._apply_ms_group_alignment(idx, x, aux_losses)
             x = stage(x)
+            if self.ms_group_align_position == "post_block":
+                x, aux_losses = self._apply_ms_group_alignment(idx, x, aux_losses)
             edge_key = str(idx)
             if edge_key in self.eemsa_stage_modules:
                 x = self.eemsa_stage_modules[edge_key](x)

@@ -383,6 +383,19 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
                 rgb_channels,
                 ms_channels,
             )
+    if (not dual_stream_backbone) and group_align_cfg is not None:
+        single_stream_group_align_on = bool(group_align_cfg.get("enabled", group_align_cfg.get("enable", False))) or bool(
+            group_align_cfg.get("input_enabled", group_align_cfg.get("input_enable", False))
+        )
+        if rgb_channels == 0 and ms_channels > 0:
+            overrides["HGNetv2"]["ms_group_align"] = group_align_cfg
+        elif single_stream_group_align_on:
+            logging.warning(
+                "检测到 backbone_group_align，但当前不是 MSI-only 单流输入(rgb_channels=%d, ms_channels=%d)，"
+                "将忽略该配置。",
+                rgb_channels,
+                ms_channels,
+            )
 
     if dual_stream_backbone:
         # 需要从 vendored YAML 中读取 HGNetv2 的基础超参（name/return_idx/use_lab），避免硬编码各尺度配置。

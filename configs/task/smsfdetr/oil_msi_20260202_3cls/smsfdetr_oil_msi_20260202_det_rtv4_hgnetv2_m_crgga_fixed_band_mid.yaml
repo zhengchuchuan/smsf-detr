@@ -1,0 +1,41 @@
+# @package _global_
+
+# MSI-only CRGGA ablation (fixed-band reference at stem/C2):
+# - keep dataset/training recipe aligned with baseline and spatial_weighted variant
+# - strict single-stream HGNetv2 with MSBandSeparatedStemAlign + CRGGA at stem/C2
+defaults:
+  - /data/oil_msi_20260202_3cls
+  - /model/rtmsfdetr/rtv4_hgnetv2_m
+  - /model/smsfdetr/modules/crgga_fixed_band_mid
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_oil_msi20260202_crgga_fixed_band_mid
+  disable_distill: true
+  # Strict single-stream HGNetv2: 7-channel MSI only.
+  dual_stream_backbone: false
+
+data:
+  # Keep the same MSI normalization as baseline so ablation is fair.
+  ms_normalize_mode: per_channel_minmax
+
+train:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_oil_msi20260202_crgga_fixed_band_mid
+  batch_size: 24
+  epochs: 100
+  num_classes: 3
+  lr: 0.0004
+  weight_decay: 0.0001
+  optimizer_param_groups:
+    # Train the newly added MSI stem/alignment branch more aggressively than pretrained backbone.
+    - params: '^(?=.*backbone\.ms_band_sep_stem)(?!.*(?:norm|bn)).*$'
+      lr: 0.0005
+    - params: '^(?=.*backbone)(?!.*backbone\.ms_band_sep_stem)(?!.*(?:norm|bn)).*$'
+      lr: 0.0002
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 49
+  no_aug_epoch: 12

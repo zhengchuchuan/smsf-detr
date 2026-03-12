@@ -1,0 +1,10 @@
+# @package _global_
+
+model:
+  # Keep the explicit per-band stem, but disable CRGGA warping/losses.
+  backbone_ms_band_sep:
+    enabled: true
+    embed_channels: 16
+    embed_use_bn: true
+    align:
+      enabled: false

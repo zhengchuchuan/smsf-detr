@@ -49,7 +49,8 @@ class CRGGA(nn.Module):
         self,
         *,
         in_channels: int,
-        ref_mode: Literal["mean", "global_weighted", "spatial_weighted"] = "spatial_weighted",
+        ref_mode: str = "spatial_weighted",
+        ref_band_index: int | str | None = None,
         num_iters: int = 1,
         ref_detach: bool = False,
         # DeformableAlign2D params (shared across bands)
@@ -80,12 +81,25 @@ class CRGGA(nn.Module):
         if in_channels <= 0:
             raise ValueError(f"in_channels must be > 0, got {in_channels}")
         ref_mode_norm = str(ref_mode).strip().lower()
-        if ref_mode_norm not in {"mean", "global_weighted", "spatial_weighted"}:
+        if ref_mode_norm in {"fixed", "single_band", "band"}:
+            ref_mode_norm = "fixed_band"
+        if ref_mode_norm not in {"mean", "global_weighted", "spatial_weighted", "fixed_band"}:
             raise ValueError(
-                f"Unsupported ref_mode={ref_mode} (supported: mean|global_weighted|spatial_weighted)"
+                f"Unsupported ref_mode={ref_mode} (supported: mean|global_weighted|spatial_weighted|fixed_band)"
             )
         self.in_channels = in_channels
         self.ref_mode = ref_mode_norm
+        self.ref_band_index: int | None
+        if ref_band_index is None:
+            self.ref_band_index = None
+        elif isinstance(ref_band_index, str):
+            index_norm = ref_band_index.strip().lower()
+            if index_norm in {"mid", "middle", "center", "centre", "auto"}:
+                self.ref_band_index = None
+            else:
+                self.ref_band_index = int(ref_band_index)
+        else:
+            self.ref_band_index = int(ref_band_index)
         self.num_iters = int(num_iters)
         if self.num_iters <= 0:
             raise ValueError(f"num_iters must be > 0, got {num_iters}")
@@ -159,6 +173,15 @@ class CRGGA(nn.Module):
             return x.mean(dim=1)
 
         b, n, c, h, w = x.shape
+        if self.ref_mode == "fixed_band":
+            if self.ref_band_index is None:
+                idx = n // 2
+            else:
+                idx = self.ref_band_index if self.ref_band_index >= 0 else n + self.ref_band_index
+            if idx < 0 or idx >= n:
+                raise ValueError(f"ref_band_index out of range: idx={idx}, num_bands={n}")
+            return x[:, idx]
+
         if self.ref_mode == "global_weighted":
             assert self.ref_mlp is not None
             pooled = x.mean(dim=(3, 4))  # (B, N, C)
@@ -211,19 +234,20 @@ class CRGGA(nn.Module):
             band_attn_norm_losses = []
             band_attn_entropy_losses = []
             capture_debug = return_debug and (it_idx == self.num_iters - 1)
-            if capture_debug:
-                offset_x_list = []
-                offset_y_list = []
-                attn_list = []
-                affine_list = []
+            offset_x_list: list[torch.Tensor] = []
+            offset_y_list: list[torch.Tensor] = []
+            attn_list: list[torch.Tensor] = []
+            affine_list: list[torch.Tensor] = []
             for i in range(n):
                 src = cur[:, i]
                 pred = self.aligner.predict(ref_pred, src)
-                if self.aligner.affine_enabled:
+                if self.aligner.affine_enabled and len(pred) == 4:
                     offset_x, offset_y, attn_weights, affine_theta = pred
-                else:
+                elif len(pred) == 3:
                     offset_x, offset_y, attn_weights = pred
                     affine_theta = None
+                else:
+                    raise RuntimeError(f"Unexpected predict output length: {len(pred)}")
 
                 aligned, _, attn_exp = self.aligner.deform_with_attention(
                     src,
@@ -339,7 +363,8 @@ class ProjectedCRGGA(nn.Module):
         in_channels: int,
         num_groups: int,
         group_channels: int,
-        ref_mode: Literal["mean", "global_weighted", "spatial_weighted"] = "spatial_weighted",
+        ref_mode: str = "spatial_weighted",
+        ref_band_index: int | str | None = None,
         num_iters: int = 1,
         ref_detach: bool = False,
         num_keypoints: int = 5,
@@ -382,6 +407,7 @@ class ProjectedCRGGA(nn.Module):
         self.group_aligner = GroupwiseDeformableAlign2D(
             in_channels=group_channels,
             ref_mode=ref_mode,
+            ref_band_index=ref_band_index,
             num_iters=int(num_iters),
             ref_detach=bool(ref_detach),
             num_keypoints=int(num_keypoints),
@@ -407,7 +433,8 @@ class ProjectedCRGGA(nn.Module):
         self.proj_out = nn.Conv2d(proj_dim, in_channels, kernel_size=1, bias=True)
         # Start from identity (via residual): proj_out=0 => out=x.
         nn.init.constant_(self.proj_out.weight, 0.0)
-        nn.init.constant_(self.proj_out.bias, 0.0)
+        if self.proj_out.bias is not None:
+            nn.init.constant_(self.proj_out.bias, 0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
         if x.ndim != 4:
@@ -418,11 +445,14 @@ class ProjectedCRGGA(nn.Module):
 
         z = self.proj_in(x).view(b, self.num_groups, self.group_channels, h, w)
         out = self.group_aligner(z)
-        if self.training and isinstance(out, tuple) and len(out) == 2:
-            z_aligned, aux_losses = out
+        if self.training and isinstance(out, tuple) and len(out) >= 2 and torch.is_tensor(out[0]) and isinstance(out[1], dict):
+            z_aligned = out[0]
+            aux_losses = out[1]
         else:
-            z_aligned = out
+            z_aligned = out[0] if isinstance(out, tuple) and len(out) > 0 else out
             aux_losses = {}
+        if not torch.is_tensor(z_aligned):
+            raise RuntimeError("Unexpected aligner output type in ProjectedCRGGA")
         delta = self.proj_out(z_aligned.reshape(b, self.num_groups * self.group_channels, h, w))
         y = x + delta
         if self.training and aux_losses:

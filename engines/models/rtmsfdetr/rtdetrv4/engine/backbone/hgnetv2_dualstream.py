@@ -733,6 +733,7 @@ class HGNetv2DualStream(nn.Module):
         else:
             # Shared defaults for input/stage aligners.
             ref_mode = str(ms_group_align_cfg.get("ref_mode", "spatial_weighted") or "spatial_weighted")
+            ref_band_index = ms_group_align_cfg.get("ref_band_index", ms_group_align_cfg.get("ref_channel", None))
             num_iters = int(ms_group_align_cfg.get("num_iters", 1) or 1)
             ref_detach = bool(ms_group_align_cfg.get("ref_detach", False))
             num_keypoints = int(ms_group_align_cfg.get("num_keypoints", 5) or 5)
@@ -776,6 +777,10 @@ class HGNetv2DualStream(nn.Module):
             # Input-level: align raw MS bands (treat each band as C=1).
             if self.ms_group_align_input_enabled:
                 input_ref_mode = str(ms_group_align_cfg.get("input_ref_mode", ref_mode) or ref_mode)
+                input_ref_band_index = ms_group_align_cfg.get(
+                    "input_ref_band_index",
+                    ms_group_align_cfg.get("input_ref_channel", ref_band_index),
+                )
                 input_num_iters = int(ms_group_align_cfg.get("input_num_iters", num_iters) or num_iters)
                 input_ref_detach = bool(ms_group_align_cfg.get("input_ref_detach", ref_detach))
                 input_num_keypoints = int(ms_group_align_cfg.get("input_num_keypoints", num_keypoints) or num_keypoints)
@@ -814,6 +819,7 @@ class HGNetv2DualStream(nn.Module):
                 self.ms_group_input_aligner = GroupwiseDeformableAlign2D(
                     in_channels=1,
                     ref_mode=input_ref_mode,
+                    ref_band_index=input_ref_band_index,
                     num_iters=input_num_iters,
                     ref_detach=input_ref_detach,
                     num_keypoints=input_num_keypoints,
@@ -860,6 +866,7 @@ class HGNetv2DualStream(nn.Module):
                         num_groups=num_groups,
                         group_channels=group_channels,
                         ref_mode=ref_mode,
+                        ref_band_index=ref_band_index,
                         num_iters=num_iters,
                         ref_detach=ref_detach,
                         num_keypoints=num_keypoints,
