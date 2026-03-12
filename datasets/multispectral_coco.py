@@ -409,8 +409,8 @@ def _load_msi_as_tensor(
         raise ValueError(f"多光谱图像形状异常（需要 3 维）：{msi_path}, shape={array.shape}")
 
     # 统一为 HWC
-    # tifffile/numpy 可能返回 CHW/CWH/HWC；PIL/np.array 通常为 HWC。
-    # MODA 常见为 CWH（如 [8, 1200, 900]），可通过 data.ms_npy_layout 显式指定。
+    # 对于 TIFF/常规图像，保持历史行为：只在 CHW 明确成立时做 CHW->HWC。
+    # 对于 npy/npz，再额外支持 MODA 常见的 CWH（如 [8, 1200, 900]）。
     dim0, dim1, dim2 = array.shape
     if npy_layout == "hwc":
         array_hwc = array
@@ -421,12 +421,21 @@ def _load_msi_as_tensor(
     else:
         is_ch_first = dim0 <= 32 and dim0 < dim1 and dim0 < dim2
         is_ch_last = dim2 <= 32 and dim2 < dim0 and dim2 < dim1
-        if is_ch_first and not is_ch_last:
-            # CHW/CWH 含糊场景：当 axis-1 >= axis-2 时优先判作 CWH（匹配 MODA 1200x900）。
+        if is_ch_first and is_ch_last and expected_channels is not None:
+            exp = int(expected_channels)
+            if dim0 == exp and dim2 != exp:
+                is_ch_last = False
+            elif dim2 == exp and dim0 != exp:
+                is_ch_first = False
+
+        if suffix in {".npy", ".npz"} and is_ch_first and not is_ch_last:
+            # 仅对 numpy 存档保留 CWH 自动判定；TIFF 的 [C,H,W] 在 oil/MSI 数据中是常态。
             if expected_channels is not None and int(expected_channels) == int(dim0) and dim1 >= dim2:
                 array_hwc = np.transpose(array, (2, 1, 0))
             else:
                 array_hwc = np.transpose(array, (1, 2, 0))
+        elif is_ch_first and not is_ch_last:
+            array_hwc = np.transpose(array, (1, 2, 0))
         else:
             array_hwc = array
 

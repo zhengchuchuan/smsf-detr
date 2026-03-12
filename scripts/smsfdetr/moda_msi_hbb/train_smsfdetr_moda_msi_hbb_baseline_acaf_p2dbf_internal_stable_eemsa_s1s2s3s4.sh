@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GPU_ID="${GPU_ID:-0}"
+GPU_ID="${GPU_ID:-1}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 
 python main.py --mode train \

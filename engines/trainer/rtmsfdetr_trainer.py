@@ -435,6 +435,21 @@ class RtmsfDetrTrainer(BaseTrainer):
                 **adamw_kwargs,
             )
 
+        explicit_group_lrs = [
+            float(pg.get("lr", lr))
+            for pg in (optimizer_param_groups or [])
+            if get_config(pg, "lr", None) is not None
+        ]
+        if optimizer_type == "adamw" and float(lr) >= 1.0e-3:
+            min_explicit_lr = min(explicit_group_lrs) if explicit_group_lrs else float(lr)
+            if float(lr) >= max(1.0e-3, 5.0 * float(min_explicit_lr)):
+                logging.warning(
+                    "检测到较大的 AdamW base lr=%.6f（显式分组最小 lr=%.6f）。"
+                    " 若这是 RT-DETRv4/小数据集训练，需重点确认是否把 0.0004 误写成了 0.004。",
+                    float(lr),
+                    float(min_explicit_lr),
+                )
+
         logging.info(
             "优化器创建完成: type=%s, lr=%.6f, weight_decay=%.6f, param_groups=%d",
             optimizer_type,
