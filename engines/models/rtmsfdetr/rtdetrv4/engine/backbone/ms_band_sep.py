@@ -6,6 +6,7 @@ from typing import Any, cast
 import torch
 import torch.nn as nn
 
+from .fixed_band_cmda import FixedBandCMDA
 from .group_deform_align import GroupwiseDeformableAlign2D
 
 __all__ = ["MSBandSeparatedStemAlign"]
@@ -85,7 +86,7 @@ class MSBandSeparatedStemAlign(nn.Module):
 
     Pipeline:
       1) per-band embedding (shared small CNN): (B,7,H,W) -> (B,7,Cemb,H/4,W/4)
-      2) groupwise alignment on explicit band dimension (optional)
+      2) explicit-band alignment/fusion on the kept band axis (optional)
       3) merge to the original backbone's expected C2 input channels: (B,7*Cemb,...) -> (B,C2_in,...)
 
     This module is designed to be plugged into HGNetv2DualStream *instead of* `ms_backbone.stem`.
@@ -98,7 +99,7 @@ class MSBandSeparatedStemAlign(nn.Module):
         c2_in_channels: int,
         embed_channels: int = 16,
         embed_use_bn: bool = True,
-        # Alignment config (GroupwiseDeformableAlign2D). If None/disabled -> no alignment.
+        # Alignment config (CRGGA or fixed-band CMDA). If None/disabled -> no alignment.
         align_cfg: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__()
@@ -125,42 +126,82 @@ class MSBandSeparatedStemAlign(nn.Module):
             align_enabled = True
         self.align_enabled = align_enabled
 
-        self.aligner: GroupwiseDeformableAlign2D | None = None
+        self.aligner: nn.Module | None = None
         if self.align_enabled:
-            ref_mode_raw = str(_cfg_value(cfg, "ref_mode", "spatial_weighted")).strip().lower()
-            if ref_mode_raw in {"fixed", "single_band", "band"}:
-                ref_mode_raw = "fixed_band"
-            if ref_mode_raw not in {"mean", "global_weighted", "spatial_weighted", "fixed_band"}:
+            align_type_raw = str(_cfg_value(cfg, "type", _cfg_value(cfg, "align_type", "crgga"))).strip().lower()
+            if align_type_raw in {"groupwise", "group_align", "group_deform", "crgga"}:
+                align_type_raw = "crgga"
+            elif align_type_raw in {"cmda", "band_cmda", "fixedbandcmda", "fixed_band_cmda"}:
+                align_type_raw = "fixed_band_cmda"
+            else:
                 raise ValueError(
-                    f"Unsupported ref_mode={ref_mode_raw} (supported: mean|global_weighted|spatial_weighted|fixed_band)"
+                    f"Unsupported align.type={align_type_raw} (supported: crgga|fixed_band_cmda)"
                 )
-            ref_mode = cast(Any, ref_mode_raw)
-            self.aligner = GroupwiseDeformableAlign2D(
-                in_channels=self.embed_channels,
-                ref_mode=ref_mode,
-                ref_band_index=cfg.get("ref_band_index", cfg.get("ref_channel", None)),
-                num_iters=int(_cfg_value(cfg, "num_iters", 1)),
-                ref_detach=bool(cfg.get("ref_detach", True)),
-                num_keypoints=int(_cfg_value(cfg, "num_keypoints", 9)),
-                offset_scale=float(_cfg_value(cfg, "offset_scale", 3.0)),
-                offset_enabled=bool(cfg.get("offset_enabled", True)),
-                attention_norm=str(_cfg_value(cfg, "attention_norm", "softmax")),
-                padding_mode=str(_cfg_value(cfg, "padding_mode", "border")),
-                align_corners=bool(cfg.get("align_corners", True)),
-                loss_type=str(_cfg_value(cfg, "loss_type", "infonce")),
-                loss_downsample=cfg.get("loss_downsample", 0.5),
-                nce_num_patches=int(_cfg_value(cfg, "nce_num_patches", 64)),
-                nce_patch_size=int(_cfg_value(cfg, "nce_patch_size", 5)),
-                nce_tau=float(_cfg_value(cfg, "nce_tau", 0.2)),
-                affine_enabled=bool(cfg.get("affine_enabled", cfg.get("affine", False))),
-                affine_scale=float(_cfg_value(cfg, "affine_scale", 0.1)),
-                affine_init_identity=bool(cfg.get("affine_init_identity", True)),
-                affine_type=str(_cfg_value(cfg, "affine_type", "affine")),
-                loss_weight=float(_cfg_value(cfg, "loss_weight", 0.02)),
-                loss_offset_weight=float(_cfg_value(cfg, "loss_offset_weight", 0.01)),
-                loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
-                loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
-            )
+            if align_type_raw == "crgga":
+                ref_mode_raw = str(_cfg_value(cfg, "ref_mode", "spatial_weighted")).strip().lower()
+                if ref_mode_raw in {"fixed", "single_band", "band"}:
+                    ref_mode_raw = "fixed_band"
+                if ref_mode_raw not in {"mean", "global_weighted", "spatial_weighted", "fixed_band"}:
+                    raise ValueError(
+                        f"Unsupported ref_mode={ref_mode_raw} (supported: mean|global_weighted|spatial_weighted|fixed_band)"
+                    )
+                ref_mode = cast(Any, ref_mode_raw)
+                self.aligner = GroupwiseDeformableAlign2D(
+                    in_channels=self.embed_channels,
+                    ref_mode=ref_mode,
+                    ref_band_index=cfg.get("ref_band_index", cfg.get("ref_channel", None)),
+                    num_iters=int(_cfg_value(cfg, "num_iters", 1)),
+                    ref_detach=bool(cfg.get("ref_detach", True)),
+                    num_keypoints=int(_cfg_value(cfg, "num_keypoints", 9)),
+                    offset_scale=float(_cfg_value(cfg, "offset_scale", 3.0)),
+                    offset_enabled=bool(cfg.get("offset_enabled", True)),
+                    attention_norm=str(_cfg_value(cfg, "attention_norm", "softmax")),
+                    padding_mode=str(_cfg_value(cfg, "padding_mode", "border")),
+                    align_corners=bool(cfg.get("align_corners", True)),
+                    loss_type=str(_cfg_value(cfg, "loss_type", "infonce")),
+                    loss_downsample=cfg.get("loss_downsample", 0.5),
+                    nce_num_patches=int(_cfg_value(cfg, "nce_num_patches", 64)),
+                    nce_patch_size=int(_cfg_value(cfg, "nce_patch_size", 5)),
+                    nce_tau=float(_cfg_value(cfg, "nce_tau", 0.2)),
+                    affine_enabled=bool(cfg.get("affine_enabled", cfg.get("affine", False))),
+                    affine_scale=float(_cfg_value(cfg, "affine_scale", 0.1)),
+                    affine_init_identity=bool(cfg.get("affine_init_identity", True)),
+                    affine_type=str(_cfg_value(cfg, "affine_type", "affine")),
+                    loss_weight=float(_cfg_value(cfg, "loss_weight", 0.02)),
+                    loss_offset_weight=float(_cfg_value(cfg, "loss_offset_weight", 0.01)),
+                    loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
+                    loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
+                )
+            else:
+                self.aligner = FixedBandCMDA(
+                    in_channels=self.embed_channels,
+                    anchor_band_index=cfg.get(
+                        "anchor_band_index",
+                        cfg.get("ref_band_index", cfg.get("ref_channel", None)),
+                    ),
+                    num_iters=int(_cfg_value(cfg, "num_iters", 1)),
+                    anchor_detach=bool(cfg.get("anchor_detach", cfg.get("ref_detach", True))),
+                    num_keypoints=int(_cfg_value(cfg, "num_keypoints", 9)),
+                    offset_scale=float(_cfg_value(cfg, "offset_scale", 3.0)),
+                    offset_enabled=bool(cfg.get("offset_enabled", True)),
+                    attention_norm=str(_cfg_value(cfg, "attention_norm", "softmax")),
+                    padding_mode=str(_cfg_value(cfg, "padding_mode", "border")),
+                    align_corners=bool(cfg.get("align_corners", True)),
+                    loss_type=str(_cfg_value(cfg, "loss_type", "infonce")),
+                    loss_downsample=cfg.get("loss_downsample", 0.5),
+                    nce_num_patches=int(_cfg_value(cfg, "nce_num_patches", 64)),
+                    nce_patch_size=int(_cfg_value(cfg, "nce_patch_size", 5)),
+                    nce_tau=float(_cfg_value(cfg, "nce_tau", 0.2)),
+                    affine_enabled=bool(cfg.get("affine_enabled", cfg.get("affine", False))),
+                    affine_scale=float(_cfg_value(cfg, "affine_scale", 0.1)),
+                    affine_init_identity=bool(cfg.get("affine_init_identity", True)),
+                    affine_type=str(_cfg_value(cfg, "affine_type", "affine")),
+                    loss_weight=float(_cfg_value(cfg, "loss_weight", 0.02)),
+                    loss_offset_weight=float(_cfg_value(cfg, "loss_offset_weight", 0.01)),
+                    loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
+                    loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
+                    fuse_hidden_channels=int(_cfg_value(cfg, "fuse_hidden_channels", self.embed_channels)),
+                )
 
         merge_in = int(self.ms_in_chs * self.embed_channels)
         self.merge = nn.Sequential(

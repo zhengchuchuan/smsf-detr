@@ -66,6 +66,7 @@ from utils.misc import collate_fn as default_collate_fn
 
 PathLike = Union[str, Path]
 logger = logging.getLogger(__name__)
+_WARNED_AMBIGUOUS_MSI_LAYOUTS: set[str] = set()
 
 
 def select_annotation_file(ann_dir: Path, image_set: str, prefer_bbox: bool) -> Path:
@@ -430,6 +431,19 @@ def _load_msi_as_tensor(
 
         if suffix in {".npy", ".npz"} and is_ch_first and not is_ch_last:
             # 仅对 numpy 存档保留 CWH 自动判定；TIFF 的 [C,H,W] 在 oil/MSI 数据中是常态。
+            if (
+                npy_layout == "auto"
+                and expected_channels is not None
+                and int(expected_channels) == int(dim0)
+                and dim1 == dim2
+            ):
+                warn_key = f"{suffix}:square_auto"
+                if warn_key not in _WARNED_AMBIGUOUS_MSI_LAYOUTS:
+                    logger.warning(
+                        "检测到方形 numpy MSI 且 data.ms_npy_layout=auto，布局在 CHW/CWH 间存在歧义；"
+                        "当前按 CWH 优先处理。若实际数据为 CHW，请显式设置 data.ms_npy_layout=chw。"
+                    )
+                    _WARNED_AMBIGUOUS_MSI_LAYOUTS.add(warn_key)
             if expected_channels is not None and int(expected_channels) == int(dim0) and dim1 >= dim2:
                 array_hwc = np.transpose(array, (2, 1, 0))
             else:

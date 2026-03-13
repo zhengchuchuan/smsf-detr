@@ -1,0 +1,15 @@
+# @package _global_
+
+# 双流 SMSFDETR：ASMF + Fixed-Band CMDA
+# - 保持现有双流 ASMF 基线不变
+# - 仅在 MSI 分支的显式 band-separated stem/C2 位置添加 fixed_band_cmda（anchor=band 3）
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+  - /model/smsfdetr/modules/fixed_band_cmda_b3
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_fixed_band_cmda_b3
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_fixed_band_cmda_b3

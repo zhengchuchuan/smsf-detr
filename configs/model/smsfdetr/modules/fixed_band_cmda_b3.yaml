@@ -1,0 +1,29 @@
+# @package _global_
+
+model:
+  # Fixed-band CMDA: use band-3 as the anchor band at the explicit MS stem/C2 stage.
+  backbone_ms_band_sep:
+    enabled: true
+    embed_channels: 16
+    embed_use_bn: true
+    align:
+      enabled: true
+      type: fixed_band_cmda
+      anchor_band_index: 3
+      anchor_detach: true
+      num_iters: 1
+      num_keypoints: 9
+      offset_enabled: true
+      offset_scale: 3.0
+      attention_norm: softmax
+      padding_mode: border
+      align_corners: true
+      loss_type: infonce
+      loss_downsample: 0.5
+      nce_patch_size: 5
+      nce_num_patches: 64
+      nce_tau: 0.2
+      fuse_hidden_channels: 16
+      loss_weight: 0.02
+      loss_offset_weight: 0.01
+      loss_attn_entropy_weight: 0.001
