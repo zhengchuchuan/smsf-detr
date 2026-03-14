@@ -1,0 +1,39 @@
+# @package _global_
+
+# MSI-only ablation:
+# - keep the explicit MS band-separated stem
+# - strengthen per-band shallow feature extraction with a shared HGNetv2-style stem
+# - disable extra alignment to isolate whether the previous drop came from weak MS stem features
+defaults:
+  - /data/oil_msi_20260202_3cls
+  - /model/rtmsfdetr/rtv4_hgnetv2_m
+  - /model/smsfdetr/modules/msbandsep_shared_hgstem_noalign
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_oil_msi20260202_msbandsep_shared_hgstem_noalign
+  disable_distill: true
+  dual_stream_backbone: false
+
+data:
+  ms_normalize_mode: per_channel_minmax
+
+train:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_oil_msi20260202_msbandsep_shared_hgstem_noalign
+  batch_size: 24
+  epochs: 100
+  num_classes: 3
+  lr: 0.0004
+  weight_decay: 0.0001
+  optimizer_param_groups:
+    - params: '^(?=.*backbone\.ms_band_sep_stem)(?!.*(?:norm|bn)).*$'
+      lr: 0.0005
+    - params: '^(?=.*backbone)(?!.*backbone\.ms_band_sep_stem)(?!.*(?:norm|bn)).*$'
+      lr: 0.0002
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 49
+  no_aug_epoch: 12

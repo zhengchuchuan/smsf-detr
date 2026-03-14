@@ -5,8 +5,10 @@ from typing import Any, cast
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .fixed_band_cmda import FixedBandCMDA
+from .fixed_band_deform_cross_attn import FixedBandDeformCrossAttn
 from .group_deform_align import GroupwiseDeformableAlign2D
 
 __all__ = ["MSBandSeparatedStemAlign"]
@@ -29,6 +31,24 @@ def _gn_groups(num_channels: int, *, max_groups: int = 8, min_channels_per_group
 
 def _make_gn(num_channels: int) -> nn.GroupNorm:
     return nn.GroupNorm(num_groups=_gn_groups(num_channels), num_channels=int(num_channels))
+
+
+def _make_norm(num_channels: int, *, norm_type: str) -> nn.Module:
+    norm = str(norm_type).strip().lower()
+    if norm in {"gn", "group", "groupnorm"}:
+        return _make_gn(num_channels)
+    if norm in {"bn", "batch", "batchnorm"}:
+        return nn.BatchNorm2d(int(num_channels))
+    raise ValueError(f"Unsupported norm_type={norm_type} (supported: gn|bn)")
+
+
+def _make_activation(name: str) -> nn.Module:
+    act = str(name).strip().lower()
+    if act in {"relu"}:
+        return nn.ReLU(inplace=True)
+    if act in {"identity", "none", "linear"}:
+        return nn.Identity()
+    raise ValueError(f"Unsupported activation={name} (supported: relu|identity)")
 
 
 def _cfg_value(cfg: Mapping[str, Any], key: str, default: Any) -> Any:
@@ -80,12 +100,99 @@ class _SharedPerBandEmbedding(nn.Module):
         return y.reshape(b, n, c, hh, ww)
 
 
+class _PerBandConvNormAct(nn.Module):
+    """
+    Conv-Norm-ReLU block used by the stronger shared per-band stem.
+
+    The topology mirrors HGNetv2's stem, but defaults to GroupNorm because each band is processed
+    independently through a (B*N, 1, H, W) reshape.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        *,
+        kernel_size: int,
+        stride: int = 1,
+        norm_type: str = "gn",
+    ) -> None:
+        super().__init__()
+        self.conv = nn.Conv2d(
+            int(in_channels),
+            int(out_channels),
+            kernel_size=int(kernel_size),
+            stride=int(stride),
+            padding=(int(kernel_size) - 1) // 2,
+            bias=False,
+        )
+        self.norm = _make_norm(int(out_channels), norm_type=norm_type)
+        self.act = nn.ReLU(inplace=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = self.norm(x)
+        x = self.act(x)
+        return x
+
+
+class _SharedPerBandHGStem(nn.Module):
+    """
+    Stronger per-band extractor that mirrors HGNetv2's stem topology with shared weights.
+
+    Input:
+        x: (B, N, H, W)
+    Output:
+        y: (B, N, C_out, H/4, W/4)
+    """
+
+    def __init__(
+        self,
+        *,
+        mid_channels: int,
+        out_channels: int,
+        norm_type: str = "gn",
+    ) -> None:
+        super().__init__()
+        mid = int(mid_channels)
+        out = int(out_channels)
+        if mid <= 0:
+            raise ValueError(f"mid_channels must be > 0, got {mid_channels}")
+        if out <= 0:
+            raise ValueError(f"out_channels must be > 0, got {out_channels}")
+
+        self.out_channels = out
+        self.stem1 = _PerBandConvNormAct(1, mid, kernel_size=3, stride=2, norm_type=norm_type)
+        self.stem2a = _PerBandConvNormAct(mid, mid // 2, kernel_size=2, stride=1, norm_type=norm_type)
+        self.stem2b = _PerBandConvNormAct(mid // 2, mid, kernel_size=2, stride=1, norm_type=norm_type)
+        self.stem3 = _PerBandConvNormAct(mid * 2, mid, kernel_size=3, stride=2, norm_type=norm_type)
+        self.stem4 = _PerBandConvNormAct(mid, out, kernel_size=1, stride=1, norm_type=norm_type)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=1, ceil_mode=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 4:
+            raise ValueError(f"_SharedPerBandHGStem expects (B,N,H,W), got {x.shape}")
+        b, n, h, w = x.shape
+        y = x.reshape(b * n, 1, h, w)
+        y = self.stem1(y)
+        y = F.pad(y, (0, 1, 0, 1))
+        y2 = self.stem2a(y)
+        y2 = F.pad(y2, (0, 1, 0, 1))
+        y2 = self.stem2b(y2)
+        y1 = self.pool(y)
+        y = torch.cat([y1, y2], dim=1)
+        y = self.stem3(y)
+        y = self.stem4(y)
+        _, _, hh, ww = y.shape
+        return y.reshape(b, n, self.out_channels, hh, ww)
+
+
 class MSBandSeparatedStemAlign(nn.Module):
     """
     Scheme-1 MS stem: avoid cross-band fusion before C2 alignment.
 
     Pipeline:
-      1) per-band embedding (shared small CNN): (B,7,H,W) -> (B,7,Cemb,H/4,W/4)
+      1) per-band extractor with shared weights: (B,7,H,W) -> (B,7,Cemb,H/4,W/4)
       2) explicit-band alignment/fusion on the kept band axis (optional)
       3) merge to the original backbone's expected C2 input channels: (B,7*Cemb,...) -> (B,C2_in,...)
 
@@ -99,7 +206,13 @@ class MSBandSeparatedStemAlign(nn.Module):
         c2_in_channels: int,
         embed_channels: int = 16,
         embed_use_bn: bool = True,
-        # Alignment config (CRGGA or fixed-band CMDA). If None/disabled -> no alignment.
+        extractor_type: str = "light",
+        stem_mid_channels: int | None = None,
+        stem_out_channels: int | None = None,
+        stem_norm_type: str = "gn",
+        merge_activation: str = "relu",
+        # Alignment config (CRGGA / fixed-band CMDA / fixed-band soft deformable cross-attn).
+        # If None/disabled -> no alignment.
         align_cfg: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__()
@@ -110,8 +223,33 @@ class MSBandSeparatedStemAlign(nn.Module):
         if self.c2_in_channels <= 0:
             raise ValueError(f"c2_in_channels must be > 0, got {c2_in_channels}")
 
-        self.embed_channels = int(embed_channels)
-        self.embed = _SharedPerBandEmbedding(embed_channels=self.embed_channels, use_bn=bool(embed_use_bn))
+        extractor_type_norm = str(extractor_type).strip().lower()
+        if extractor_type_norm in {"light", "embed", "shared_embed", "shared_per_band_embed"}:
+            extractor_type_norm = "light"
+        elif extractor_type_norm in {"shared_hgstem", "hgstem", "origstem", "shared_origstem"}:
+            extractor_type_norm = "shared_hgstem"
+        else:
+            raise ValueError(
+                f"Unsupported extractor_type={extractor_type} "
+                "(supported: light|shared_hgstem)"
+            )
+
+        self.extractor_type = extractor_type_norm
+        self.embed: nn.Module
+        if self.extractor_type == "shared_hgstem":
+            mid_channels = int(stem_mid_channels) if stem_mid_channels is not None else max(8, self.c2_in_channels * 3 // 4)
+            out_channels = int(stem_out_channels) if stem_out_channels is not None else self.c2_in_channels
+            self.band_feature_channels = int(out_channels)
+            self.embed_channels = self.band_feature_channels
+            self.embed = _SharedPerBandHGStem(
+                mid_channels=mid_channels,
+                out_channels=out_channels,
+                norm_type=stem_norm_type,
+            )
+        else:
+            self.embed_channels = int(embed_channels)
+            self.band_feature_channels = self.embed_channels
+            self.embed = _SharedPerBandEmbedding(embed_channels=self.embed_channels, use_bn=bool(embed_use_bn))
 
         cfg: dict[str, Any] = {}
         if align_cfg is not None:
@@ -133,9 +271,19 @@ class MSBandSeparatedStemAlign(nn.Module):
                 align_type_raw = "crgga"
             elif align_type_raw in {"cmda", "band_cmda", "fixedbandcmda", "fixed_band_cmda"}:
                 align_type_raw = "fixed_band_cmda"
+            elif align_type_raw in {
+                "fixed_band_deform_cross_attn",
+                "fixedbanddeformcrossattn",
+                "fixed_band_soft_deform",
+                "fixed_band_soft_deform_attn",
+                "cf_deform_cross_attn",
+                "cfda",
+            }:
+                align_type_raw = "fixed_band_deform_cross_attn"
             else:
                 raise ValueError(
-                    f"Unsupported align.type={align_type_raw} (supported: crgga|fixed_band_cmda)"
+                    "Unsupported align.type="
+                    f"{align_type_raw} (supported: crgga|fixed_band_cmda|fixed_band_deform_cross_attn)"
                 )
             if align_type_raw == "crgga":
                 ref_mode_raw = str(_cfg_value(cfg, "ref_mode", "spatial_weighted")).strip().lower()
@@ -147,7 +295,7 @@ class MSBandSeparatedStemAlign(nn.Module):
                     )
                 ref_mode = cast(Any, ref_mode_raw)
                 self.aligner = GroupwiseDeformableAlign2D(
-                    in_channels=self.embed_channels,
+                    in_channels=self.band_feature_channels,
                     ref_mode=ref_mode,
                     ref_band_index=cfg.get("ref_band_index", cfg.get("ref_channel", None)),
                     num_iters=int(_cfg_value(cfg, "num_iters", 1)),
@@ -172,9 +320,9 @@ class MSBandSeparatedStemAlign(nn.Module):
                     loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
                     loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
                 )
-            else:
+            elif align_type_raw == "fixed_band_cmda":
                 self.aligner = FixedBandCMDA(
-                    in_channels=self.embed_channels,
+                    in_channels=self.band_feature_channels,
                     anchor_band_index=cfg.get(
                         "anchor_band_index",
                         cfg.get("ref_band_index", cfg.get("ref_channel", None)),
@@ -200,14 +348,32 @@ class MSBandSeparatedStemAlign(nn.Module):
                     loss_offset_weight=float(_cfg_value(cfg, "loss_offset_weight", 0.01)),
                     loss_attn_norm_weight=float(_cfg_value(cfg, "loss_attn_norm_weight", 0.0)),
                     loss_attn_entropy_weight=float(_cfg_value(cfg, "loss_attn_entropy_weight", 0.001)),
-                    fuse_hidden_channels=int(_cfg_value(cfg, "fuse_hidden_channels", self.embed_channels)),
+                    fuse_hidden_channels=int(_cfg_value(cfg, "fuse_hidden_channels", self.band_feature_channels)),
+                )
+            else:
+                self.aligner = FixedBandDeformCrossAttn(
+                    in_channels=self.band_feature_channels,
+                    num_bands=self.ms_in_chs,
+                    anchor_band_index=cfg.get(
+                        "anchor_band_index",
+                        cfg.get("ref_band_index", cfg.get("ref_channel", None)),
+                    ),
+                    anchor_detach=bool(cfg.get("anchor_detach", cfg.get("ref_detach", False))),
+                    num_heads=int(_cfg_value(cfg, "num_heads", 4)),
+                    num_points=int(_cfg_value(cfg, "num_points", 4)),
+                    band_embed_enabled=bool(cfg.get("band_embed_enabled", True)),
+                    support_ref_shift_enabled=bool(cfg.get("support_ref_shift_enabled", True)),
+                    support_ref_shift_scale=float(_cfg_value(cfg, "support_ref_shift_scale", 0.02)),
+                    delta_hidden_channels=int(_cfg_value(cfg, "delta_hidden_channels", self.band_feature_channels)),
+                    delta_scale_init=float(_cfg_value(cfg, "delta_scale_init", 0.05)),
+                    delta_scale_per_channel=bool(cfg.get("delta_scale_per_channel", True)),
                 )
 
-        merge_in = int(self.ms_in_chs * self.embed_channels)
+        merge_in = int(self.ms_in_chs * self.band_feature_channels)
         self.merge = nn.Sequential(
             nn.Conv2d(merge_in, self.c2_in_channels, kernel_size=1, bias=False),
             _make_gn(self.c2_in_channels),
-            nn.ReLU(inplace=True),
+            _make_activation(merge_activation),
         )
 
     def forward(self, ms: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
@@ -229,7 +395,7 @@ class MSBandSeparatedStemAlign(nn.Module):
             if not torch.is_tensor(z):
                 raise RuntimeError("Unexpected aligner output type in MSBandSeparatedStemAlign")
 
-        z_flat = z.reshape(b, self.ms_in_chs * self.embed_channels, z.shape[-2], z.shape[-1])
+        z_flat = z.reshape(b, self.ms_in_chs * self.band_feature_channels, z.shape[-2], z.shape[-1])
         y = self.merge(z_flat)
         if self.training and aux_losses:
             return y, aux_losses

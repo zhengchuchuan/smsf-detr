@@ -1,0 +1,13 @@
+# @package _global_
+
+model:
+  # Stronger MS band-separated stem:
+  # - keep the explicit per-band branch idea
+  # - replace the lightweight 2-layer extractor with a shared HGNetv2-style stem
+  # - do not enable extra alignment yet; isolate the effect of stronger per-band feature extraction
+  backbone_ms_band_sep:
+    enabled: true
+    extractor_type: shared_hgstem
+    stem_norm_type: gn
+    align:
+      enabled: false

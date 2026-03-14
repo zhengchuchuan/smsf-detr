@@ -1,0 +1,15 @@
+# @package _global_
+
+model:
+  backbone_ms_band_sep:
+    enabled: false
+  # Keep the original HGNetv2 stem as the main path, and inject a small explicit-band residual branch after stem.
+  backbone_ms_residual_stem:
+    enabled: true
+    extractor_type: shared_hgstem
+    stem_norm_type: gn
+    merge_activation: identity
+    scale_init: 0.05
+    scale_per_channel: true
+    align:
+      enabled: false

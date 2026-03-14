@@ -344,6 +344,16 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
         elif hasattr(ms_band_sep_cfg_raw, "items"):
             ms_band_sep_cfg = {k: v for k, v in ms_band_sep_cfg_raw.items()}  # type: ignore[assignment]
 
+    ms_residual_stem_cfg_raw = getattr(args, "backbone_ms_residual_stem", None)
+    ms_residual_stem_cfg: Dict[str, Any] | None = None
+    if ms_residual_stem_cfg_raw is not None:
+        if isinstance(ms_residual_stem_cfg_raw, dict):
+            ms_residual_stem_cfg = dict(ms_residual_stem_cfg_raw)
+        elif isinstance(ms_residual_stem_cfg_raw, Mapping):
+            ms_residual_stem_cfg = dict(ms_residual_stem_cfg_raw)
+        elif hasattr(ms_residual_stem_cfg_raw, "items"):
+            ms_residual_stem_cfg = {k: v for k, v in ms_residual_stem_cfg_raw.items()}  # type: ignore[assignment]
+
     eemsa_cfg_raw = getattr(args, "backbone_eemsa", None)
     eemsa_cfg: Dict[str, Any] | None = None
     if eemsa_cfg_raw is not None:
@@ -379,6 +389,16 @@ def _build_rtdetrv4_overrides(args: Namespace, *, cfg_path: Path) -> Dict[str, A
         elif bool(ms_band_sep_cfg.get("enabled", ms_band_sep_cfg.get("enable", False))):
             logging.warning(
                 "检测到 backbone_ms_band_sep，但当前不是 MSI-only 单流输入(rgb_channels=%d, ms_channels=%d)，"
+                "将忽略该配置。",
+                rgb_channels,
+                ms_channels,
+            )
+    if (not dual_stream_backbone) and ms_residual_stem_cfg is not None:
+        if rgb_channels == 0 and ms_channels > 0:
+            overrides["HGNetv2"]["ms_residual_stem"] = ms_residual_stem_cfg
+        elif bool(ms_residual_stem_cfg.get("enabled", ms_residual_stem_cfg.get("enable", False))):
+            logging.warning(
+                "检测到 backbone_ms_residual_stem，但当前不是 MSI-only 单流输入(rgb_channels=%d, ms_channels=%d)，"
                 "将忽略该配置。",
                 rgb_channels,
                 ms_channels,

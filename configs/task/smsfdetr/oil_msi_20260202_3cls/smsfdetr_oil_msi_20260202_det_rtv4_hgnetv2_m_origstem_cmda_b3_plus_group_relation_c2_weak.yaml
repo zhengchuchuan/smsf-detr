@@ -1,0 +1,42 @@
+# @package _global_
+
+# MSI-only combined ablation:
+# - keep the original single-stream HGNetv2 stem as the main path
+# - add a weak explicit per-band residual MS branch with inner fixed-band CMDA (anchor band b3)
+# - add a weak shallow projected group-relation refinement on C2/stage1 input
+# - both shallow modules are conservative to reduce over-correction and preserve stem stability
+defaults:
+  - /data/oil_msi_20260202_3cls
+  - /model/rtmsfdetr/rtv4_hgnetv2_m
+  - /model/smsfdetr/modules/origstem_cmda_b3_plus_group_relation_c2_weak
+  - /runtime/default
+  - /train/rtmsfdetr_default
+  - /task/smsfdetr/base
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_oil_msi20260202_origstem_cmda_b3_plus_group_relation_c2_weak
+  disable_distill: true
+  dual_stream_backbone: false
+  backbone_ms_band_sep:
+    enabled: false
+
+data:
+  ms_normalize_mode: per_channel_minmax
+
+train:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_oil_msi20260202_origstem_cmda_b3_plus_group_relation_c2_weak
+  batch_size: 8
+  epochs: 100
+  num_classes: 3
+  lr: 0.0004
+  weight_decay: 0.0001
+  optimizer_param_groups:
+    - params: '^(?=.*backbone\.(?:ms_residual_stem_branch|ms_residual_scale|ms_group_))(?!.*(?:norm|bn)).*$'
+      lr: 0.0005
+    - params: '^(?=.*backbone)(?!.*backbone\.(?:ms_residual_stem_branch|ms_residual_scale|ms_group_))(?!.*(?:norm|bn)).*$'
+      lr: 0.0002
+    - params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.0
+  flat_epoch: 49
+  no_aug_epoch: 12

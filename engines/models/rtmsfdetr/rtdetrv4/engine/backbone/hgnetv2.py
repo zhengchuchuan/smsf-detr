@@ -14,9 +14,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .common import FrozenBatchNorm2d
+from .deform_align import DeformableAlign2D
 from .eemsa import EEMSA
 from .group_deform_align import GroupwiseDeformableAlign2D, ProjectedGroupwiseDeformableAlign2D
 from .ms_band_sep import MSBandSeparatedStemAlign
+from .stem_cf_interactive import StemCFInteractive2D
 from ..core import register
 import logging
 
@@ -507,6 +509,7 @@ class HGNetv2(nn.Module):
                  local_model_dir='weight/hgnetv2/',
                  eemsa: Mapping[str, Any] | None = None,
                  ms_band_sep: Mapping[str, Any] | None = None,
+                 ms_residual_stem: Mapping[str, Any] | None = None,
                  ms_group_align: Mapping[str, Any] | None = None):
         super().__init__()
         self.use_lab = use_lab
@@ -553,6 +556,8 @@ class HGNetv2(nn.Module):
             c2_in_channels = int(next(iter(stage_config.values()))[0])
             embed_channels = int(ms_band_sep_cfg.get("embed_channels", ms_band_sep_cfg.get("c_emb", 16)) or 16)
             embed_use_bn = bool(ms_band_sep_cfg.get("embed_use_bn", True))
+            extractor_type = str(ms_band_sep_cfg.get("extractor_type", ms_band_sep_cfg.get("stem_type", "light")) or "light")
+            stem_norm_type = str(ms_band_sep_cfg.get("stem_norm_type", ms_band_sep_cfg.get("branch_norm", "gn")) or "gn")
             align_cfg_raw = ms_band_sep_cfg.get("align", ms_band_sep_cfg.get("align_cfg", None))
             align_cfg: dict[str, Any] | None = None
             if isinstance(align_cfg_raw, Mapping):
@@ -564,11 +569,188 @@ class HGNetv2(nn.Module):
                 c2_in_channels=c2_in_channels,
                 embed_channels=embed_channels,
                 embed_use_bn=embed_use_bn,
+                extractor_type=extractor_type,
+                stem_mid_channels=int(ms_band_sep_cfg.get("stem_mid_channels", stem_channels[1])),
+                stem_out_channels=int(ms_band_sep_cfg.get("stem_out_channels", stem_channels[2])),
+                stem_norm_type=stem_norm_type,
                 align_cfg=align_cfg,
             )
             # The original stem is bypassed once ms_band_sep is enabled; freeze it to avoid DDP unused params.
             for p in self.stem.parameters():
                 p.requires_grad_(False)
+
+        ms_residual_stem_cfg: dict[str, Any] = {}
+        if ms_residual_stem is not None:
+            if isinstance(ms_residual_stem, Mapping):
+                ms_residual_stem_cfg = dict(ms_residual_stem)
+            elif hasattr(ms_residual_stem, "items"):
+                ms_residual_stem_cfg = {k: v for k, v in ms_residual_stem.items()}  # type: ignore[assignment]
+            else:
+                raise TypeError(f"Unsupported ms_residual_stem type: {type(ms_residual_stem)}")
+        self.ms_residual_stem_cfg = ms_residual_stem_cfg
+        self.ms_residual_stem_enabled = bool(
+            ms_residual_stem_cfg.get("enabled", ms_residual_stem_cfg.get("enable", False))
+        )
+        self.ms_residual_stem_branch: MSBandSeparatedStemAlign | None = None
+        self.ms_residual_scale: nn.Parameter | None = None
+        self.ms_residual_fusion_mode = "add"
+        self.ms_residual_fuse_proj: nn.Module | None = None
+        self.ms_residual_stem_interactive_enabled = False
+        self.ms_residual_stem_interactive: StemCFInteractive2D | None = None
+        self.ms_residual_post_align_enabled = False
+        self.ms_residual_post_aligner: DeformableAlign2D | None = None
+        self.ms_residual_post_align_ref_detach = True
+        self.ms_residual_post_align_loss_weight = 0.0
+        self.ms_residual_post_align_loss_offset_weight = 0.0
+        self.ms_residual_post_align_loss_attn_norm_weight = 0.0
+        self.ms_residual_post_align_loss_attn_entropy_weight = 0.0
+        if self.ms_band_sep_enabled and self.ms_residual_stem_enabled:
+            raise ValueError("ms_band_sep and ms_residual_stem cannot be enabled at the same time")
+        if self.ms_residual_stem_enabled:
+            c2_in_channels = int(next(iter(stage_config.values()))[0])
+            embed_channels = int(ms_residual_stem_cfg.get("embed_channels", ms_residual_stem_cfg.get("c_emb", 16)) or 16)
+            embed_use_bn = bool(ms_residual_stem_cfg.get("embed_use_bn", True))
+            extractor_type = str(
+                ms_residual_stem_cfg.get("extractor_type", ms_residual_stem_cfg.get("stem_type", "light")) or "light"
+            )
+            stem_norm_type = str(
+                ms_residual_stem_cfg.get("stem_norm_type", ms_residual_stem_cfg.get("branch_norm", "gn")) or "gn"
+            )
+            merge_activation = str(ms_residual_stem_cfg.get("merge_activation", "identity") or "identity")
+            align_cfg_raw = ms_residual_stem_cfg.get("align", ms_residual_stem_cfg.get("align_cfg", None))
+            align_cfg: dict[str, Any] | None = None
+            if isinstance(align_cfg_raw, Mapping):
+                align_cfg = dict(align_cfg_raw)
+            elif align_cfg_raw is not None and hasattr(align_cfg_raw, "items"):
+                align_cfg = {k: v for k, v in align_cfg_raw.items()}  # type: ignore[assignment]
+            self.ms_residual_stem_branch = MSBandSeparatedStemAlign(
+                ms_in_chs=input_channels,
+                c2_in_channels=c2_in_channels,
+                embed_channels=embed_channels,
+                embed_use_bn=embed_use_bn,
+                extractor_type=extractor_type,
+                stem_mid_channels=int(ms_residual_stem_cfg.get("stem_mid_channels", stem_channels[1])),
+                stem_out_channels=int(ms_residual_stem_cfg.get("stem_out_channels", stem_channels[2])),
+                stem_norm_type=stem_norm_type,
+                merge_activation=merge_activation,
+                align_cfg=align_cfg,
+            )
+            fusion_mode = str(ms_residual_stem_cfg.get("fusion_mode", "add") or "add").strip().lower()
+            if fusion_mode in {"add", "sum", "residual_add"}:
+                fusion_mode = "add"
+            elif fusion_mode in {"concat", "concat_proj", "concat_residual", "concat_residual_proj"}:
+                fusion_mode = "concat_proj"
+            else:
+                raise ValueError(
+                    f"Unsupported ms_residual_stem.fusion_mode={fusion_mode} "
+                    "(supported: add|concat_proj)"
+                )
+            self.ms_residual_fusion_mode = fusion_mode
+            if self.ms_residual_fusion_mode == "concat_proj":
+                self.ms_residual_fuse_proj = nn.Conv2d(c2_in_channels * 2, c2_in_channels, kernel_size=1, bias=True)
+                nn.init.constant_(self.ms_residual_fuse_proj.weight, 0.0)
+                if self.ms_residual_fuse_proj.bias is not None:
+                    nn.init.constant_(self.ms_residual_fuse_proj.bias, 0.0)
+
+            stem_interactive_cfg_raw = ms_residual_stem_cfg.get(
+                "stem_interactive",
+                ms_residual_stem_cfg.get("cf_interactive", ms_residual_stem_cfg.get("main_interactive", None)),
+            )
+            stem_interactive_cfg: dict[str, Any] = {}
+            if isinstance(stem_interactive_cfg_raw, Mapping):
+                stem_interactive_cfg = dict(stem_interactive_cfg_raw)
+            elif stem_interactive_cfg_raw is not None and hasattr(stem_interactive_cfg_raw, "items"):
+                stem_interactive_cfg = {k: v for k, v in stem_interactive_cfg_raw.items()}  # type: ignore[assignment]
+            self.ms_residual_stem_interactive_enabled = bool(
+                stem_interactive_cfg.get("enabled", stem_interactive_cfg.get("enable", False))
+            )
+            if self.ms_residual_stem_interactive_enabled:
+                self.ms_residual_stem_interactive = StemCFInteractive2D(
+                    in_channels=c2_in_channels,
+                    num_heads=int(_cfg_value(stem_interactive_cfg, "num_heads", 4)),
+                    num_points=int(_cfg_value(stem_interactive_cfg, "num_points", 4)),
+                    memory_detach=bool(
+                        stem_interactive_cfg.get(
+                            "memory_detach",
+                            stem_interactive_cfg.get("detach_memory", True),
+                        )
+                    ),
+                    ref_shift_enabled=bool(
+                        stem_interactive_cfg.get(
+                            "ref_shift_enabled",
+                            stem_interactive_cfg.get("support_ref_shift_enabled", True),
+                        )
+                    ),
+                    ref_shift_scale=float(
+                        _cfg_value(
+                            stem_interactive_cfg,
+                            "ref_shift_scale",
+                            _cfg_value(stem_interactive_cfg, "support_ref_shift_scale", 0.02),
+                        )
+                    ),
+                    delta_hidden_channels=int(
+                        _cfg_value(stem_interactive_cfg, "delta_hidden_channels", c2_in_channels)
+                    ),
+                    scale_init=float(_cfg_value(stem_interactive_cfg, "scale_init", 0.01)),
+                    scale_per_channel=bool(stem_interactive_cfg.get("scale_per_channel", True)),
+                )
+
+            post_align_cfg_raw = ms_residual_stem_cfg.get(
+                "post_align",
+                ms_residual_stem_cfg.get("align_to_main", ms_residual_stem_cfg.get("fuse_align", None)),
+            )
+            post_align_cfg: dict[str, Any] = {}
+            if isinstance(post_align_cfg_raw, Mapping):
+                post_align_cfg = dict(post_align_cfg_raw)
+            elif post_align_cfg_raw is not None and hasattr(post_align_cfg_raw, "items"):
+                post_align_cfg = {k: v for k, v in post_align_cfg_raw.items()}  # type: ignore[assignment]
+            self.ms_residual_post_align_enabled = bool(
+                post_align_cfg.get("enabled", post_align_cfg.get("enable", False))
+            )
+            if self.ms_residual_post_align_enabled:
+                self.ms_residual_post_align_ref_detach = bool(
+                    post_align_cfg.get("ref_detach", post_align_cfg.get("detach_ref", True))
+                )
+                self.ms_residual_post_align_loss_weight = float(post_align_cfg.get("loss_weight", 0.02))
+                self.ms_residual_post_align_loss_offset_weight = float(
+                    post_align_cfg.get("loss_offset_weight", post_align_cfg.get("offset_loss_weight", 0.0))
+                )
+                self.ms_residual_post_align_loss_attn_norm_weight = float(
+                    post_align_cfg.get("loss_attn_norm_weight", post_align_cfg.get("attn_reg_weight", 0.0))
+                )
+                self.ms_residual_post_align_loss_attn_entropy_weight = float(
+                    post_align_cfg.get("loss_attn_entropy_weight", post_align_cfg.get("attn_entropy_reg_weight", 0.0))
+                )
+                self.ms_residual_post_aligner = DeformableAlign2D(
+                    in_channels=c2_in_channels,
+                    num_keypoints=int(_cfg_value(post_align_cfg, "num_keypoints", 9)),
+                    offset_scale=float(_cfg_value(post_align_cfg, "offset_scale", 3.0)),
+                    offset_enabled=bool(post_align_cfg.get("offset_enabled", True)),
+                    per_channel_offset=False,
+                    attention_norm=str(_cfg_value(post_align_cfg, "attention_norm", "softmax")),
+                    padding_mode=str(_cfg_value(post_align_cfg, "padding_mode", "border")),
+                    align_corners=bool(post_align_cfg.get("align_corners", True)),
+                    loss_type=str(_cfg_value(post_align_cfg, "loss_type", "infonce")),
+                    loss_downsample=post_align_cfg.get("loss_downsample", 0.5),
+                    nce_num_patches=int(_cfg_value(post_align_cfg, "nce_num_patches", 64)),
+                    nce_patch_size=int(_cfg_value(post_align_cfg, "nce_patch_size", 5)),
+                    nce_tau=float(_cfg_value(post_align_cfg, "nce_tau", 0.2)),
+                    affine_enabled=bool(post_align_cfg.get("affine_enabled", post_align_cfg.get("affine", False))),
+                    affine_scale=float(_cfg_value(post_align_cfg, "affine_scale", 0.1)),
+                    affine_init_identity=bool(post_align_cfg.get("affine_init_identity", True)),
+                    affine_per_channel=False,
+                    affine_type=str(_cfg_value(post_align_cfg, "affine_type", "affine")),
+                )
+
+            residual_scale_init = float(
+                ms_residual_stem_cfg.get(
+                    "scale_init",
+                    1.0 if self.ms_residual_fusion_mode == "concat_proj" else 0.05,
+                )
+            )
+            residual_scale_per_channel = bool(ms_residual_stem_cfg.get("scale_per_channel", True))
+            scale_shape = (1, c2_in_channels, 1, 1) if residual_scale_per_channel else (1,)
+            self.ms_residual_scale = nn.Parameter(torch.full(scale_shape, residual_scale_init))
 
         # Optional CRGGA on MSI-only single-stream inputs.
         # - input_enabled: align raw MS bands before the original stem, keeping the stem unchanged.
@@ -991,6 +1173,13 @@ class HGNetv2(nn.Module):
                 aux_losses[key] = aux_losses.get(key, 0.0) + value
         return aux_losses
 
+    @staticmethod
+    def _safe_normalize_attention(attn: torch.Tensor) -> torch.Tensor:
+        if attn.ndim != 4:
+            raise ValueError(f"Expected attention tensor shaped (B,K,H,W), got {attn.shape}")
+        denom = attn.sum(dim=1, keepdim=True).clamp_min(1e-8)
+        return attn / denom
+
     def _apply_ms_group_input_alignment(
         self,
         x: torch.Tensor,
@@ -1033,18 +1222,127 @@ class HGNetv2(nn.Module):
             x = out[0] if isinstance(out, tuple) else out
         return x, aux_losses
 
+    def _apply_ms_residual_post_align(
+        self,
+        ref: torch.Tensor,
+        residual: torch.Tensor,
+        aux_losses: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if not self.ms_residual_post_align_enabled or self.ms_residual_post_aligner is None:
+            return residual, aux_losses
+
+        aligner = self.ms_residual_post_aligner
+        ref_pred = ref.detach() if self.ms_residual_post_align_ref_detach else ref
+        if self.training:
+            pred = aligner.predict(ref_pred, residual)
+            if aligner.affine_enabled:
+                offset_x, offset_y, attn_weights, affine_theta = pred
+                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                    residual,
+                    offset_x=offset_x,
+                    offset_y=offset_y,
+                    attention_weights=attn_weights,
+                    affine_theta=affine_theta,
+                )
+                loss_dict = aligner.loss_calculate(
+                    ref_pred,
+                    offset_x,
+                    offset_y,
+                    residual_aligned,
+                    attn_exp,
+                    affine_theta=affine_theta,
+                )
+            else:
+                offset_x, offset_y, attn_weights = pred
+                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                    residual,
+                    offset_x=offset_x,
+                    offset_y=offset_y,
+                    attention_weights=attn_weights,
+                )
+                loss_dict = aligner.loss_calculate(ref_pred, offset_x, offset_y, residual_aligned, attn_exp)
+
+            if self.ms_residual_post_align_loss_weight > 0 and "loss_deform_align" in loss_dict:
+                aux_losses["loss_deform_align"] = aux_losses.get("loss_deform_align", 0.0) + (
+                    loss_dict["loss_deform_align"] * self.ms_residual_post_align_loss_weight
+                )
+
+            if (
+                self.ms_residual_post_align_loss_offset_weight > 0
+                or self.ms_residual_post_align_loss_attn_norm_weight > 0
+                or self.ms_residual_post_align_loss_attn_entropy_weight > 0
+            ):
+                _, _, hh, ww = attn_weights.shape
+                if self.ms_residual_post_align_loss_offset_weight > 0:
+                    denom_x = max(int(ww) - 1, 1) / 2.0
+                    denom_y = max(int(hh) - 1, 1) / 2.0
+                    offset_x_px = offset_x * float(denom_x)
+                    offset_y_px = offset_y * float(denom_y)
+                    p = self._safe_normalize_attention(attn_weights)
+                    fused_x = (p * offset_x_px).sum(dim=1)
+                    fused_y = (p * offset_y_px).sum(dim=1)
+                    aux_losses["loss_deform_offset"] = aux_losses.get("loss_deform_offset", 0.0) + (
+                        torch.sqrt(fused_x ** 2 + fused_y ** 2 + 1e-8).mean()
+                        * self.ms_residual_post_align_loss_offset_weight
+                    )
+
+                if self.ms_residual_post_align_loss_attn_norm_weight > 0:
+                    attn_sum = attn_weights.sum(dim=1)
+                    aux_losses["loss_deform_attn"] = aux_losses.get("loss_deform_attn", 0.0) + (
+                        ((attn_sum - 1.0) ** 2).mean() * self.ms_residual_post_align_loss_attn_norm_weight
+                    )
+
+                if self.ms_residual_post_align_loss_attn_entropy_weight > 0:
+                    p = self._safe_normalize_attention(attn_weights)
+                    ent = -(p * torch.log(p.clamp_min(1e-8))).sum(dim=1).mean()
+                    aux_losses["loss_deform_attn_entropy"] = aux_losses.get("loss_deform_attn_entropy", 0.0) + (
+                        ent * self.ms_residual_post_align_loss_attn_entropy_weight
+                    )
+
+            return residual_aligned, aux_losses
+
+        return aligner(ref_pred, residual), aux_losses
+
+    def _apply_ms_residual_stem_interactive(
+        self,
+        x: torch.Tensor,
+        residual: torch.Tensor,
+        aux_losses: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if not self.ms_residual_stem_interactive_enabled or self.ms_residual_stem_interactive is None:
+            return x, aux_losses
+        x = self.ms_residual_stem_interactive(x, residual)
+        return x, aux_losses
+
     def forward(self, x):
         aux_losses: dict[str, torch.Tensor] = {}
         x, aux_losses = self._apply_ms_group_input_alignment(x, aux_losses)
+        stem_input = x
         if self.ms_band_sep_enabled and self.ms_band_sep_stem is not None:
-            out = self.ms_band_sep_stem(x)
+            out = self.ms_band_sep_stem(stem_input)
             if self.training and isinstance(out, tuple) and len(out) == 2:
                 x, stage_losses = out
                 aux_losses = self._merge_aux_losses(aux_losses, stage_losses)
             else:
                 x = out[0] if isinstance(out, tuple) else out
         else:
-            x = self.stem(x)
+            x = self.stem(stem_input)
+            if self.ms_residual_stem_enabled and self.ms_residual_stem_branch is not None and self.ms_residual_scale is not None:
+                out = self.ms_residual_stem_branch(stem_input)
+                if self.training and isinstance(out, tuple) and len(out) == 2:
+                    residual, stage_losses = out
+                    aux_losses = self._merge_aux_losses(aux_losses, stage_losses)
+                else:
+                    residual = out[0] if isinstance(out, tuple) else out
+                residual, aux_losses = self._apply_ms_residual_post_align(x, residual, aux_losses)
+                x, aux_losses = self._apply_ms_residual_stem_interactive(x, residual, aux_losses)
+                if self.ms_residual_fusion_mode == "concat_proj":
+                    if self.ms_residual_fuse_proj is None:
+                        raise RuntimeError("Missing ms_residual_fuse_proj for concat_proj fusion")
+                    delta = self.ms_residual_fuse_proj(torch.cat([x, residual], dim=1))
+                    x = x + (self.ms_residual_scale * delta)
+                else:
+                    x = x + (self.ms_residual_scale * residual)
         if self.eemsa_stem is not None:
             x = self.eemsa_stem(x)
         outs = []

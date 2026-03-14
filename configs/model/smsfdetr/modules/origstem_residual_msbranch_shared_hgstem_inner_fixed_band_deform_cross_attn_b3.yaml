@@ -1,0 +1,29 @@
+# @package _global_
+
+model:
+  backbone_ms_band_sep:
+    enabled: false
+  # Keep the original HGNetv2 stem as the main path.
+  # Build an explicit per-band residual MS branch, and replace hard alignment with
+  # fixed-band soft deformable cross-attention inside the shallow branch.
+  backbone_ms_residual_stem:
+    enabled: true
+    extractor_type: shared_hgstem
+    stem_norm_type: gn
+    merge_activation: identity
+    fusion_mode: add
+    scale_init: 0.05
+    scale_per_channel: true
+    align:
+      enabled: true
+      type: fixed_band_deform_cross_attn
+      anchor_band_index: 3
+      anchor_detach: false
+      num_heads: 4
+      num_points: 4
+      band_embed_enabled: true
+      support_ref_shift_enabled: true
+      support_ref_shift_scale: 0.02
+      delta_hidden_channels: 32
+      delta_scale_init: 0.05
+      delta_scale_per_channel: true
