@@ -1,0 +1,17 @@
+# @package _global_
+
+# 双流 SMSFDETR：ASMF + OrigStem Residual MS Branch + Inner Fixed-Band CMDA + Stem CF Interactive
+# - 以现有双流 ASMF 配置为主干
+# - 在 MSI 分支保留原始 HGNetv2 stem 主路径
+# - 额外添加一个显式 per-band residual MS stem 分支，在 stem/C2 处做 fixed-band CMDA
+# - 再用 stem-level CF interactive 将该早期对齐残差注入主干 stem 特征
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d
+  - /model/smsfdetr/modules/origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive

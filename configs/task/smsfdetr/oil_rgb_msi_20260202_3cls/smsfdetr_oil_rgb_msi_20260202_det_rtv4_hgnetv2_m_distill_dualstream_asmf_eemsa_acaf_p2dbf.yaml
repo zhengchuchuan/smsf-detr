@@ -1,0 +1,14 @@
+# @package _global_
+
+# ASMF + EEMSA + ACAF + P2DBF(internal)
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf
+  - /model/smsfdetr/modules/eemsa_stage1_stage2_stage3_stage4
+  - /model/smsfdetr/modules/acaf_p2dbf_internal
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_acaf_p2dbf
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_eemsa_acaf_p2dbf

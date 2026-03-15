@@ -1,0 +1,14 @@
+# @package _global_
+
+# ASMF + ACAF + P2DBF(internal) + early-align
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf
+  - /model/smsfdetr/modules/acaf_p2dbf_internal
+  - /model/smsfdetr/modules/origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_acaf_p2dbf_earlyalign
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_acaf_p2dbf_earlyalign

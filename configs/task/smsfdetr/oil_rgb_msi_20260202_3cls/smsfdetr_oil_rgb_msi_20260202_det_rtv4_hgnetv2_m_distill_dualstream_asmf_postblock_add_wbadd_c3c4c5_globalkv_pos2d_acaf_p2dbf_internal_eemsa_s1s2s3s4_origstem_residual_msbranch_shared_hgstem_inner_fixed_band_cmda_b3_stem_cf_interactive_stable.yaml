@@ -1,0 +1,23 @@
+# @package _global_
+
+# Stable relaunch variant for ACAF + P2DBF(internal) + EEMSA + early-align residual branch.
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_acaf_p2dbf_internal_eemsa_s1s2s3s4_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_acaf_p2dbf_internal_eemsa_s1s2s3s4_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive_stable
+  backbone_ms_residual_stem:
+    scale_init: 0.01
+    align:
+      loss_weight: 0.01
+      loss_offset_weight: 0.005
+      loss_attn_entropy_weight: 0.0005
+    stem_interactive:
+      ref_shift_scale: 0.01
+      scale_init: 0.002
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_postblock_add_wbadd_c3c4c5_globalkv_pos2d_acaf_p2dbf_internal_eemsa_s1s2s3s4_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive_stable
+  amp: false
+  clip_max_norm: 0.1

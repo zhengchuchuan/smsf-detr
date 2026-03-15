@@ -89,6 +89,10 @@ class DeformableAlign2D(nn.Module):
         nce_num_patches: int = 64,
         nce_patch_size: int = 5,
         nce_tau: float = 0.2,
+        infonce_weight: float = 1.0,
+        lncc_weight: float = 0.2,
+        lncc_window_size: int = 5,
+        lncc_eps: float = 1e-6,
         affine_enabled: bool = False,
         affine_scale: float = 0.1,
         affine_init_identity: bool = True,
@@ -110,8 +114,18 @@ class DeformableAlign2D(nn.Module):
             loss_type_norm = "cosine"
         elif loss_type_norm in {"infonce", "info_nce", "info-nce", "nce", "patch_nce", "patch-nce"}:
             loss_type_norm = "infonce"
+        elif loss_type_norm in {"lncc", "local_ncc", "local-ncc", "ncc_local"}:
+            loss_type_norm = "lncc"
+        elif loss_type_norm in {
+            "infonce_lncc",
+            "info_nce_lncc",
+            "info-nce-lncc",
+            "infonce+lncc",
+            "combo_infonce_lncc",
+        }:
+            loss_type_norm = "infonce_lncc"
         else:
-            raise ValueError(f"Unsupported loss_type={loss_type} (supported: cosine|infonce)")
+            raise ValueError(f"Unsupported loss_type={loss_type} (supported: cosine|infonce|lncc|infonce_lncc)")
         loss_downsample_value = None if loss_downsample is None else float(loss_downsample)
         if loss_downsample_value is not None:
             if loss_downsample_value <= 0 or loss_downsample_value > 1.0:
@@ -127,6 +141,22 @@ class DeformableAlign2D(nn.Module):
         nce_tau = float(nce_tau)
         if nce_tau <= 0:
             raise ValueError(f"nce_tau must be > 0, got {nce_tau}")
+        infonce_weight = float(infonce_weight)
+        lncc_weight = float(lncc_weight)
+        if infonce_weight < 0:
+            raise ValueError(f"infonce_weight must be >= 0, got {infonce_weight}")
+        if lncc_weight < 0:
+            raise ValueError(f"lncc_weight must be >= 0, got {lncc_weight}")
+        lncc_window_size = int(lncc_window_size)
+        if lncc_window_size <= 0:
+            raise ValueError(f"lncc_window_size must be > 0, got {lncc_window_size}")
+        if lncc_window_size % 2 == 0:
+            lncc_window_size += 1
+        lncc_eps = float(lncc_eps)
+        if lncc_eps <= 0:
+            raise ValueError(f"lncc_eps must be > 0, got {lncc_eps}")
+        if loss_type_norm == "infonce_lncc" and infonce_weight <= 0 and lncc_weight <= 0:
+            raise ValueError("infonce_lncc requires infonce_weight > 0 or lncc_weight > 0")
         affine_enabled = bool(affine_enabled)
         affine_scale = float(affine_scale)
         if affine_scale <= 0:
@@ -168,6 +198,10 @@ class DeformableAlign2D(nn.Module):
         self.nce_num_patches = nce_num_patches
         self.nce_patch_size = nce_patch_size
         self.nce_tau = nce_tau
+        self.infonce_weight = infonce_weight
+        self.lncc_weight = lncc_weight
+        self.lncc_window_size = lncc_window_size
+        self.lncc_eps = lncc_eps
         self.affine_enabled = affine_enabled
         self.affine_scale = affine_scale
         self.affine_init_identity = affine_init_identity
@@ -541,6 +575,41 @@ class DeformableAlign2D(nn.Module):
         loss = 0.5 * (F.cross_entropy(logits, labels) + F.cross_entropy(logits.t(), labels))
         return loss
 
+    def _local_ncc_loss(self, x_ref: torch.Tensor, x_aligned: torch.Tensor) -> torch.Tensor:
+        x_ref = self._maybe_downsample(x_ref)
+        x_aligned = self._maybe_downsample(x_aligned)
+        if x_ref.shape != x_aligned.shape:
+            raise ValueError(f"LNCC expects same shapes, got ref={x_ref.shape} aligned={x_aligned.shape}")
+
+        b, c, h, w = x_ref.shape
+        win = min(int(self.lncc_window_size), int(h), int(w))
+        if win <= 1:
+            cosine_sim = F.cosine_similarity(x_aligned, x_ref, dim=1)
+            return 1.0 - cosine_sim.mean()
+        if win % 2 == 0:
+            win = max(1, win - 1)
+
+        pad = win // 2
+        filt = torch.ones((c, 1, win, win), device=x_ref.device, dtype=x_ref.dtype)
+        win_size = float(win * win)
+
+        sum_x = F.conv2d(x_ref, filt, padding=pad, groups=c)
+        sum_y = F.conv2d(x_aligned, filt, padding=pad, groups=c)
+        sum_x2 = F.conv2d(x_ref * x_ref, filt, padding=pad, groups=c)
+        sum_y2 = F.conv2d(x_aligned * x_aligned, filt, padding=pad, groups=c)
+        sum_xy = F.conv2d(x_ref * x_aligned, filt, padding=pad, groups=c)
+
+        mean_x = sum_x / win_size
+        mean_y = sum_y / win_size
+
+        cross = sum_xy - mean_y * sum_x - mean_x * sum_y + mean_x * mean_y * win_size
+        var_x = sum_x2 - 2.0 * mean_x * sum_x + mean_x * mean_x * win_size
+        var_y = sum_y2 - 2.0 * mean_y * sum_y + mean_y * mean_y * win_size
+
+        denom = torch.sqrt(var_x.clamp_min(self.lncc_eps) * var_y.clamp_min(self.lncc_eps) + self.lncc_eps)
+        cc = (cross / denom).clamp(-1.0, 1.0)
+        return 1.0 - cc.mean()
+
     def loss_calculate(
         self,
         x_ref: torch.Tensor,
@@ -567,6 +636,17 @@ class DeformableAlign2D(nn.Module):
             loss = 1.0 - cosine_sim.mean()
         elif self.loss_type == "infonce":
             loss = self._info_nce_loss(x_ref, x_aligned)
+        elif self.loss_type == "lncc":
+            loss = self._local_ncc_loss(x_ref, x_aligned)
+        elif self.loss_type == "infonce_lncc":
+            terms = []
+            if self.infonce_weight > 0:
+                terms.append(self.infonce_weight * self._info_nce_loss(x_ref, x_aligned))
+            if self.lncc_weight > 0:
+                terms.append(self.lncc_weight * self._local_ncc_loss(x_ref, x_aligned))
+            if not terms:
+                raise RuntimeError("infonce_lncc produced no active loss terms")
+            loss = torch.stack(terms).sum()
         else:
             raise ValueError(f"Unsupported loss_type={self.loss_type}")
         aux_losses["loss_deform_align"] = loss

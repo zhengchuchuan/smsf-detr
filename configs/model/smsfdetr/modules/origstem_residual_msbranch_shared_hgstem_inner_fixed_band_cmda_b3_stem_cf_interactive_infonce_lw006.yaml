@@ -1,0 +1,47 @@
+# @package _global_
+
+model:
+  backbone_ms_band_sep:
+    enabled: false
+  # Stronger InfoNCE supervision: further raise the outer alignment loss
+  # weight to test whether the residual alignment branch should dominate more.
+  backbone_ms_residual_stem:
+    enabled: true
+    extractor_type: shared_hgstem
+    stem_norm_type: gn
+    merge_activation: identity
+    fusion_mode: add
+    scale_init: 0.05
+    scale_per_channel: true
+    align:
+      enabled: true
+      type: fixed_band_cmda
+      anchor_band_index: 3
+      anchor_detach: true
+      num_iters: 1
+      num_keypoints: 9
+      offset_enabled: true
+      offset_scale: 3.0
+      attention_norm: softmax
+      padding_mode: border
+      align_corners: true
+      loss_type: infonce
+      loss_downsample: 0.5
+      nce_patch_size: 5
+      nce_num_patches: 64
+      nce_tau: 0.2
+      infonce_weight: 1.0
+      loss_weight: 0.06
+      loss_offset_weight: 0.01
+      loss_attn_entropy_weight: 0.001
+    stem_interactive:
+      enabled: true
+      num_heads: 4
+      num_points: 4
+      memory_detach: true
+      ref_shift_enabled: true
+      ref_shift_scale: 0.02
+      scale_init: 0.01
+      scale_per_channel: true
+    post_align:
+      enabled: false
