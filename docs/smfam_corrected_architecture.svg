@@ -18,12 +18,12 @@
   </defs>
 
   <rect x="16" y="16" width="2168" height="1218" rx="26" fill="#fbfbfb" stroke="#d0d0d0" stroke-width="2"/>
-  <text x="1100" y="55" class="title" text-anchor="middle">Corrected SMFCM Architecture Draft</text>
+  <text x="1100" y="55" class="title" text-anchor="middle">Corrected SMFAM Architecture Draft</text>
   <text x="1100" y="84" class="small" text-anchor="middle">Current implementation aligned with OrigStem + Residual MS Branch + FixedBandCMDA + StemCFInteractive2D</text>
 
   <!-- Section 1 -->
   <rect x="40" y="110" width="2120" height="265" rx="22" fill="#f6f1e6" stroke="#c7b28c" stroke-width="2"/>
-  <text x="1100" y="145" class="section" text-anchor="middle">Overall Pipeline of SMFCM</text>
+  <text x="1100" y="145" class="section" text-anchor="middle">Overall Pipeline of SMFAM</text>
 
   <!-- MS Input -->
   <rect x="70" y="210" width="120" height="62" rx="12" fill="#ffffff" stroke="#666666" stroke-width="2"/>

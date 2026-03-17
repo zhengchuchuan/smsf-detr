@@ -1,8 +1,8 @@
-# SMFCM 结构图与整网结构图
+# SMFAM 结构图与整网结构图
 
 本文档给出当前方法对应的两张可编辑 Mermaid 结构图：
 
-1. `SMFCM` 模块细粒度结构图
+1. `SMFAM` 模块细粒度结构图
 2. 当前 `MSI-only SMSF-DETR` 整体网络结构图
 
 对应配置：
@@ -11,17 +11,17 @@
 
 对应主干与检测框架：
 
-- Backbone：`HGNetv2-M (B2)` + `SMFCM`
+- Backbone：`HGNetv2-M (B2)` + `SMFAM`
 - Encoder：`HybridEncoder`
 - Decoder：`DFINETransformer`
 
 ---
 
-## 1. SMFCM 模块细粒度结构图
+## 1. SMFAM 模块细粒度结构图
 
 建议论文图题：
 
-- 图 X SMFCM 模块结构图
+- 图 X SMFAM 模块结构图
 
 ```mermaid
 flowchart TB
@@ -57,12 +57,12 @@ flowchart TB
         R3 --> R4["Residual feature<br/>F_res ∈ R^{B×32×H/4×W/4}"]
     end
 
-    subgraph Correct["Shallow Feature Correction"]
+    subgraph Fusion["Shallow Feature Alignment"]
         C1["Query projection on F_main"]
         C2["Memory projection on F_res"]
         C3["Single-scale MSDeformAttn<br/>reference lattice + learnable shift"]
         C4["delta_fuse + output scale γ_cf"]
-        C5["Corrected main feature<br/>F_cf = F_main + γ_cf ⊙ Δ"]
+        C5["Aligned main feature<br/>F_cf = F_main + γ_cf ⊙ Δ"]
 
         C1 --> C3
         C2 --> C3
@@ -93,15 +93,15 @@ flowchart TB
 
 建议论文图题：
 
-- 图 Y 基于 SMFCM 的 MSI-only SMSF-DETR 整体网络结构图
+- 图 Y 基于 SMFAM 的 MSI-only SMSF-DETR 整体网络结构图
 
 ```mermaid
 flowchart TB
     I0["MSI input<br/>X ∈ R^{B×7×H×W}"]
     I1["Per-channel min-max normalization"]
 
-    subgraph Backbone["Backbone: HGNetv2-M(B2) + SMFCM"]
-        B0["OrigStem + SMFCM correction<br/>output: R^{B×32×H/4×W/4}"]
+    subgraph Backbone["Backbone: HGNetv2-M(B2) + SMFAM"]
+        B0["OrigStem + SMFAM align<br/>output: R^{B×32×H/4×W/4}"]
         B1["Stage1 / C2<br/>96 channels, stride 4"]
         B2["Stage2 / C3<br/>384 channels, stride 8"]
         B3["Stage3 / C4<br/>768 channels, stride 16"]
@@ -144,7 +144,7 @@ flowchart TB
 
     subgraph TrainOnly["Train-only supervision"]
         T1["RTv4Criterion<br/>loss_vfl + loss_bbox + loss_giou<br/>+ loss_fgl + loss_ddf"]
-        T2["SMFCM auxiliary losses<br/>InfoNCE align + offset reg + attn entropy"]
+        T2["SMFAM auxiliary losses<br/>InfoNCE align + offset reg + attn entropy"]
     end
 
     I0 --> I1 --> B0
@@ -168,14 +168,14 @@ flowchart TB
 ### 2.1 图示说明
 
 - 当前方法不是双流 RGB+MS，而是单流 `MSI-only` 配置。
-- `SMFCM` 只作用在 backbone 最浅层，即 `Stem/C2` 附近。
+- `SMFAM` 只作用在 backbone 最浅层，即 `Stem/C2` 附近。
 - `HGNetv2-M(B2)` 主干在当前配置下输出三个尺度给检测头：
   - `C3`: `384` channels, stride `8`
   - `C4`: `768` channels, stride `16`
   - `C5`: `1536` channels, stride `32`
 - `HybridEncoder` 将三层主干特征统一投影到 `256` 维，并通过 top-level encoder + FPN/PAN 生成 `[P3,P4,P5]`。
 - `DFINETransformer` 基于多尺度特征和查询向量输出分类与边界框预测。
-- 训练时，`SMFCM` 内部的辅助对齐损失会作为额外项并入 `RTv4Criterion`。
+- 训练时，`SMFAM` 内部的辅助对齐损失会作为额外项并入 `RTv4Criterion`。
 
 ---
 
