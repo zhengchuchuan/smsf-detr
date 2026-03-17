@@ -1,0 +1,23 @@
+# @package _global_
+
+# MSI-only ablation:
+# - keep the original single-stream HGNetv2 stem as the main path
+# - keep the residual MS branch + inner fixed-band CMDA + StemCF interaction
+# - replace the inner auxiliary alignment loss with a CF-Deformable-DETR-style
+#   symmetric contrastive loss on sampled feature groups
+defaults:
+  - /task/smsfdetr/oil_msi_20260202_3cls/smsfdetr_oil_msi_20260202_det_rtv4_hgnetv2_m_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive
+  - _self_
+
+model:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_oil_msi20260202_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive_cfcontrast
+  backbone_ms_residual_stem:
+    align:
+      loss_type: cf_contrast
+      loss_weight: 0.02
+      loss_offset_weight: 0.01
+      loss_attn_norm_weight: 0.0
+      loss_attn_entropy_weight: 0.001
+
+train:
+  model_alias: smsfdetr_rtv4_hgnetv2_m_det_oil_msi20260202_origstem_residual_msbranch_shared_hgstem_inner_fixed_band_cmda_b3_stem_cf_interactive_cfcontrast

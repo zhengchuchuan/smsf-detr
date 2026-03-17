@@ -257,7 +257,7 @@ class CRGGA(nn.Module):
                 else:
                     raise RuntimeError(f"Unexpected predict output length: {len(pred)}")
 
-                aligned, _, attn_exp = self.aligner.deform_with_attention(
+                aligned, sampled_features, attn_exp = self.aligner.deform_with_attention(
                     src,
                     offset_x=offset_x,
                     offset_y=offset_y,
@@ -280,6 +280,7 @@ class CRGGA(nn.Module):
                         aligned,
                         attn_exp,
                         affine_theta=affine_theta,
+                        sampled_features=sampled_features,
                     )
                     band_align_losses.append(loss_dict["loss_deform_align"])
 

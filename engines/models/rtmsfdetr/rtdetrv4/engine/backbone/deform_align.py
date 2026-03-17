@@ -84,7 +84,7 @@ class DeformableAlign2D(nn.Module):
         attention_norm: str = "sigmoid",  # sigmoid|softmax
         padding_mode: str = "border",  # zeros|border|reflection
         align_corners: bool = True,
-        loss_type: str = "cosine",  # cosine|infonce
+        loss_type: str = "cosine",  # cosine|infonce|cf_contrast
         loss_downsample: float | None = None,
         nce_num_patches: int = 64,
         nce_patch_size: int = 5,
@@ -117,6 +117,14 @@ class DeformableAlign2D(nn.Module):
         elif loss_type_norm in {"lncc", "local_ncc", "local-ncc", "ncc_local"}:
             loss_type_norm = "lncc"
         elif loss_type_norm in {
+            "cf_contrast",
+            "cf-contrast",
+            "cfcontrast",
+            "cf_deformable_detr_contrast",
+            "cfdeformabledetrcontrast",
+        }:
+            loss_type_norm = "cf_contrast"
+        elif loss_type_norm in {
             "infonce_lncc",
             "info_nce_lncc",
             "info-nce-lncc",
@@ -125,7 +133,10 @@ class DeformableAlign2D(nn.Module):
         }:
             loss_type_norm = "infonce_lncc"
         else:
-            raise ValueError(f"Unsupported loss_type={loss_type} (supported: cosine|infonce|lncc|infonce_lncc)")
+            raise ValueError(
+                f"Unsupported loss_type={loss_type} "
+                "(supported: cosine|infonce|lncc|cf_contrast|infonce_lncc)"
+            )
         loss_downsample_value = None if loss_downsample is None else float(loss_downsample)
         if loss_downsample_value is not None:
             if loss_downsample_value <= 0 or loss_downsample_value > 1.0:
@@ -575,6 +586,44 @@ class DeformableAlign2D(nn.Module):
         loss = 0.5 * (F.cross_entropy(logits, labels) + F.cross_entropy(logits.t(), labels))
         return loss
 
+    def _cf_contrast_loss(self, sampled_features: torch.Tensor) -> torch.Tensor:
+        """
+        Adapt CF-Deformable-DETR's contrastive supervision to the sampled feature groups.
+
+        Expected input:
+            sampled_features: (B, K, C, H, W)
+
+        We spatially pool each sampled group to a vector, split K into two halves,
+        and apply the same symmetric cross-entropy contrast used in
+        `third_party/CF-Deformable-DETR/models/deformable_detr.py:668-742`.
+        """
+        if sampled_features.ndim != 5:
+            raise ValueError(
+                f"CF contrast expects sampled_features shaped (B,K,C,H,W), got {sampled_features.shape}"
+            )
+        b, k, c, _, _ = sampled_features.shape
+        pair_count = int(k // 2)
+        if pair_count <= 0:
+            return sampled_features.new_tensor(0.0)
+
+        pooled = sampled_features.mean(dim=(-2, -1))  # (B, K, C)
+        left = pooled[:, :pair_count, :]
+        right = pooled[:, pair_count:pair_count * 2, :]
+        if right.shape[1] != pair_count:
+            return sampled_features.new_tensor(0.0)
+
+        left = F.normalize(left, dim=-1)
+        right = F.normalize(right, dim=-1)
+
+        logits = torch.matmul(left, right.transpose(-1, -2)).float() / float(self.nce_tau)
+        labels = torch.arange(pair_count, device=sampled_features.device).unsqueeze(0).expand(b, -1)
+        loss_lr = F.cross_entropy(logits.reshape(b * pair_count, pair_count), labels.reshape(-1))
+        loss_rl = F.cross_entropy(
+            logits.transpose(-1, -2).reshape(b * pair_count, pair_count),
+            labels.reshape(-1),
+        )
+        return 0.5 * (loss_lr + loss_rl)
+
     def _local_ncc_loss(self, x_ref: torch.Tensor, x_aligned: torch.Tensor) -> torch.Tensor:
         x_ref = self._maybe_downsample(x_ref)
         x_aligned = self._maybe_downsample(x_aligned)
@@ -618,6 +667,7 @@ class DeformableAlign2D(nn.Module):
         x_aligned: torch.Tensor,
         attention_weights: torch.Tensor,
         affine_theta: torch.Tensor | None = None,
+        sampled_features: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         """
         MRT-DETR style alignment loss.
@@ -625,7 +675,8 @@ class DeformableAlign2D(nn.Module):
         Mirrors `third_party/MRT-DETR/.../presnet.py:loss_calculate`:
         - use cosine similarity or patch InfoNCE between aligned feature and reference feature.
 
-        Note: offset_x/offset_y/attention_weights are accepted for API compatibility; current loss only uses x_ref/x_aligned.
+        Note: offset_x/offset_y/attention_weights are accepted for API compatibility.
+        Most loss types only use x_ref/x_aligned; cf_contrast uses sampled_features.
         """
         _ = offset_x, offset_y, attention_weights, affine_theta
         aux_losses: dict[str, torch.Tensor] = {}
@@ -638,6 +689,10 @@ class DeformableAlign2D(nn.Module):
             loss = self._info_nce_loss(x_ref, x_aligned)
         elif self.loss_type == "lncc":
             loss = self._local_ncc_loss(x_ref, x_aligned)
+        elif self.loss_type == "cf_contrast":
+            if sampled_features is None:
+                raise ValueError("cf_contrast requires sampled_features from deform_with_attention")
+            loss = self._cf_contrast_loss(sampled_features)
         elif self.loss_type == "infonce_lncc":
             terms = []
             if self.infonce_weight > 0:

@@ -1,0 +1,277 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1250" viewBox="0 0 2200 1250">
+  <defs>
+    <style>
+      .title { font: 700 28px Arial, sans-serif; fill: #2b2b2b; }
+      .section { font: 700 22px Arial, sans-serif; fill: #2b2b2b; }
+      .label { font: 600 18px Arial, sans-serif; fill: #2b2b2b; }
+      .text { font: 16px Arial, sans-serif; fill: #333333; }
+      .small { font: 14px Arial, sans-serif; fill: #4b4b4b; }
+      .note { font: 600 16px Arial, sans-serif; fill: #5a4630; }
+      .border { stroke: #6f6f6f; stroke-width: 2; fill: none; }
+      .dash { stroke: #8d8d8d; stroke-width: 2; stroke-dasharray: 8 6; fill: none; }
+      .arrow { stroke: #333333; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .thin { stroke: #555555; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333"/>
+    </marker>
+  </defs>
+
+  <rect x="16" y="16" width="2168" height="1218" rx="26" fill="#fbfbfb" stroke="#d0d0d0" stroke-width="2"/>
+  <text x="1100" y="55" class="title" text-anchor="middle">Corrected SMFCM Architecture Draft</text>
+  <text x="1100" y="84" class="small" text-anchor="middle">Current implementation aligned with OrigStem + Residual MS Branch + FixedBandCMDA + StemCFInteractive2D</text>
+
+  <!-- Section 1 -->
+  <rect x="40" y="110" width="2120" height="265" rx="22" fill="#f6f1e6" stroke="#c7b28c" stroke-width="2"/>
+  <text x="1100" y="145" class="section" text-anchor="middle">Overall Pipeline of SMFCM</text>
+
+  <!-- MS Input -->
+  <rect x="70" y="210" width="120" height="62" rx="12" fill="#ffffff" stroke="#666666" stroke-width="2"/>
+  <text x="130" y="248" class="label" text-anchor="middle">MS Input</text>
+
+  <!-- Main path -->
+  <rect x="260" y="150" width="190" height="68" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="355" y="178" class="label" text-anchor="middle">Original HGNetv2</text>
+  <text x="355" y="200" class="label" text-anchor="middle">Stem</text>
+
+  <rect x="510" y="150" width="185" height="68" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="602" y="178" class="label" text-anchor="middle">Main Feature</text>
+  <text x="602" y="200" class="small" text-anchor="middle">F_main : BxC2xH/4xW/4</text>
+
+  <rect x="755" y="150" width="160" height="68" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="835" y="178" class="label" text-anchor="middle">1x1 Query</text>
+  <text x="835" y="200" class="label" text-anchor="middle">Projection</text>
+
+  <rect x="965" y="150" width="72" height="68" rx="12" fill="#e6b4b3" stroke="#8b5b5b" stroke-width="2"/>
+  <text x="1001" y="191" class="label" text-anchor="middle">Q</text>
+
+  <!-- Residual path -->
+  <rect x="260" y="250" width="200" height="68" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="360" y="278" class="label" text-anchor="middle">Shared Per-Band</text>
+  <text x="360" y="300" class="label" text-anchor="middle">HGStem</text>
+
+  <rect x="520" y="250" width="195" height="68" rx="14" fill="#d8f0f7" stroke="#6c99a8" stroke-width="2"/>
+  <text x="618" y="278" class="label" text-anchor="middle">Explicit Band</text>
+  <text x="618" y="300" class="label" text-anchor="middle">Features Z</text>
+
+  <rect x="775" y="250" width="165" height="68" rx="14" fill="#f4c08e" stroke="#9d6d40" stroke-width="2"/>
+  <text x="858" y="278" class="label" text-anchor="middle">FixedBandCMDA</text>
+  <text x="858" y="300" class="small" text-anchor="middle">intra-branch align</text>
+
+  <rect x="1000" y="250" width="185" height="68" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="1092" y="278" class="label" text-anchor="middle">Aligned Band</text>
+  <text x="1092" y="300" class="label" text-anchor="middle">Features Z~</text>
+
+  <rect x="1245" y="250" width="155" height="68" rx="14" fill="#d8f0f7" stroke="#6c99a8" stroke-width="2"/>
+  <text x="1322" y="278" class="label" text-anchor="middle">Reshape /</text>
+  <text x="1322" y="300" class="label" text-anchor="middle">Concat</text>
+
+  <rect x="1460" y="250" width="125" height="68" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="1522" y="278" class="label" text-anchor="middle">1x1</text>
+  <text x="1522" y="300" class="label" text-anchor="middle">Merge</text>
+
+  <rect x="1645" y="250" width="180" height="68" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="1735" y="278" class="label" text-anchor="middle">Residual Support</text>
+  <text x="1735" y="300" class="small" text-anchor="middle">F_res : BxC2xH/4xW/4</text>
+
+  <!-- StemCF block -->
+  <rect x="1095" y="145" width="210" height="55" rx="12" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="1200" y="168" class="label" text-anchor="middle">Reference Grid</text>
+  <text x="1200" y="188" class="small" text-anchor="middle">+ Ref Shift</text>
+
+  <rect x="1365" y="145" width="285" height="120" rx="16" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="1508" y="175" class="label" text-anchor="middle">StemCF</text>
+  <text x="1508" y="198" class="small" text-anchor="middle">Single-Scale Deformable</text>
+  <text x="1508" y="218" class="small" text-anchor="middle">Cross-Interaction / MSDeformAttn</text>
+  <text x="1508" y="244" class="small" text-anchor="middle">Q + F_res + reference points</text>
+
+  <rect x="1700" y="145" width="150" height="55" rx="12" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1775" y="178" class="label" text-anchor="middle">Delta Tokens</text>
+
+  <rect x="1700" y="210" width="150" height="55" rx="12" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1775" y="233" class="label" text-anchor="middle">Delta Fuse</text>
+  <text x="1775" y="253" class="small" text-anchor="middle">+ gamma_cf scale</text>
+
+  <rect x="1900" y="145" width="115" height="55" rx="12" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="1957" y="178" class="label" text-anchor="middle">F_cf</text>
+
+  <rect x="1885" y="250" width="160" height="68" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="1965" y="278" class="label" text-anchor="middle">Residual</text>
+  <text x="1965" y="300" class="label" text-anchor="middle">Injection</text>
+
+  <rect x="2085" y="250" width="62" height="68" rx="12" fill="#ffffff" stroke="#666666" stroke-width="2"/>
+  <text x="2116" y="278" class="label" text-anchor="middle">F_out</text>
+  <text x="2116" y="300" class="small" text-anchor="middle"/>
+
+  <!-- Top arrows -->
+  <path class="arrow" d="M190 240 H230 V184 H260"/>
+  <path class="arrow" d="M190 240 H230 V284 H260"/>
+  <path class="arrow" d="M450 184 H510"/>
+  <path class="arrow" d="M695 184 H755"/>
+  <path class="arrow" d="M915 184 H965"/>
+  <path class="arrow" d="M1037 184 H1365"/>
+
+  <path class="arrow" d="M460 284 H520"/>
+  <path class="arrow" d="M715 284 H775"/>
+  <path class="arrow" d="M940 284 H1000"/>
+  <path class="arrow" d="M1185 284 H1245"/>
+  <path class="arrow" d="M1400 284 H1460"/>
+  <path class="arrow" d="M1585 284 H1645"/>
+
+  <path class="thin" d="M1200 200 V222 H1365"/>
+  <path class="thin" d="M1825 284 H1885"/>
+  <path class="thin" d="M1850 172 H1900"/>
+  <path class="thin" d="M1850 237 H1885"/>
+  <path class="thin" d="M2015 172 V200"/>
+  <path class="thin" d="M2045 284 H2085"/>
+  <path class="thin" d="M1735 318 V340 H1965"/>
+  <text x="1800" y="338" class="small" text-anchor="middle">gamma_res x F_res</text>
+
+  <!-- Section 2 -->
+  <rect x="40" y="420" width="2120" height="305" rx="22" fill="#fff4cc" stroke="#d2af63" stroke-width="2"/>
+  <text x="1100" y="455" class="section" text-anchor="middle">Shared Per-Band HGStem in the Residual MS Branch</text>
+
+  <rect x="55" y="540" width="145" height="70" rx="14" fill="#dfe9c8" stroke="#77855c" stroke-width="2"/>
+  <text x="127" y="568" class="label" text-anchor="middle">X_ms</text>
+  <text x="127" y="592" class="small" text-anchor="middle">BxNxHxW</text>
+
+  <rect x="250" y="540" width="135" height="70" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="317" y="570" class="label" text-anchor="middle">reshape</text>
+  <text x="317" y="592" class="small" text-anchor="middle">(B.N)x1xHxW</text>
+
+  <rect x="435" y="540" width="165" height="70" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="517" y="565" class="label" text-anchor="middle">stem1</text>
+  <text x="517" y="588" class="small" text-anchor="middle">Conv3x3 / s2</text>
+  <text x="517" y="606" class="small" text-anchor="middle">GN + ReLU</text>
+
+  <rect x="650" y="540" width="110" height="70" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="705" y="570" class="label" text-anchor="middle">pad</text>
+  <text x="705" y="592" class="small" text-anchor="middle">right-bottom</text>
+
+  <rect x="850" y="485" width="150" height="70" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="925" y="510" class="label" text-anchor="middle">stem2a</text>
+  <text x="925" y="533" class="small" text-anchor="middle">Conv2x2</text>
+  <text x="925" y="551" class="small" text-anchor="middle">GN + ReLU</text>
+
+  <rect x="1050" y="485" width="110" height="70" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="1105" y="515" class="label" text-anchor="middle">pad</text>
+  <text x="1105" y="537" class="small" text-anchor="middle">right-bottom</text>
+
+  <rect x="1210" y="485" width="150" height="70" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1285" y="510" class="label" text-anchor="middle">stem2b</text>
+  <text x="1285" y="533" class="small" text-anchor="middle">Conv2x2</text>
+  <text x="1285" y="551" class="small" text-anchor="middle">GN + ReLU</text>
+
+  <rect x="1030" y="610" width="150" height="70" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="1105" y="637" class="label" text-anchor="middle">maxpool</text>
+  <text x="1105" y="660" class="small" text-anchor="middle">2x2 / s1 / ceil</text>
+
+  <rect x="1410" y="540" width="140" height="70" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="1480" y="568" class="label" text-anchor="middle">concat</text>
+  <text x="1480" y="592" class="small" text-anchor="middle">[pool, stem2b]</text>
+
+  <rect x="1600" y="540" width="165" height="70" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1682" y="565" class="label" text-anchor="middle">stem3</text>
+  <text x="1682" y="588" class="small" text-anchor="middle">Conv3x3 / s2</text>
+  <text x="1682" y="606" class="small" text-anchor="middle">GN + ReLU</text>
+
+  <rect x="1815" y="540" width="150" height="70" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1890" y="565" class="label" text-anchor="middle">stem4</text>
+  <text x="1890" y="588" class="small" text-anchor="middle">Conv1x1</text>
+  <text x="1890" y="606" class="small" text-anchor="middle">GN + ReLU</text>
+
+  <rect x="2015" y="540" width="120" height="70" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="2075" y="570" class="label" text-anchor="middle">reshape</text>
+  <text x="2075" y="592" class="small" text-anchor="middle">back</text>
+
+  <text x="760" y="468" class="note" text-anchor="middle">local conv branch</text>
+  <text x="1105" y="705" class="note" text-anchor="middle">pool branch</text>
+
+  <path class="arrow" d="M200 575 H250"/>
+  <path class="arrow" d="M385 575 H435"/>
+  <path class="arrow" d="M600 575 H650"/>
+  <path class="arrow" d="M760 575 H805 V520 H850"/>
+  <path class="arrow" d="M760 575 H805 V645 H1030"/>
+  <path class="arrow" d="M1000 520 H1050"/>
+  <path class="arrow" d="M1160 520 H1210"/>
+  <path class="arrow" d="M1360 520 H1410"/>
+  <path class="arrow" d="M1180 645 H1320 V575 H1410"/>
+  <path class="arrow" d="M1550 575 H1600"/>
+  <path class="arrow" d="M1765 575 H1815"/>
+  <path class="arrow" d="M1965 575 H2015"/>
+
+  <!-- Section 3 -->
+  <rect x="40" y="775" width="2120" height="430" rx="22" fill="#f5c799" stroke="#c1823e" stroke-width="2"/>
+  <text x="1100" y="810" class="section" text-anchor="middle">FixedBandCMDA with a Fixed Anchor Band</text>
+
+  <rect x="55" y="935" width="150" height="70" rx="14" fill="#f4dcc0" stroke="#a56c38" stroke-width="2"/>
+  <text x="130" y="963" class="label" text-anchor="middle">Input Z</text>
+  <text x="130" y="987" class="small" text-anchor="middle">BxNxC2xH/4xW/4</text>
+
+  <rect x="260" y="935" width="165" height="70" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="342" y="962" class="label" text-anchor="middle">Select Anchor</text>
+  <text x="342" y="985" class="small" text-anchor="middle">A = Z[:, a]</text>
+
+  <rect x="460" y="855" width="1320" height="215" rx="18" class="dash"/>
+  <text x="1120" y="885" class="note" text-anchor="middle">for each support band Z_i (i != a)</text>
+
+  <rect x="505" y="935" width="180" height="70" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="595" y="963" class="label" text-anchor="middle">Concat [A, Z_i]</text>
+  <text x="595" y="987" class="small" text-anchor="middle">Bx2C2xH/4xW/4</text>
+
+  <rect x="740" y="915" width="230" height="110" rx="16" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="855" y="943" class="label" text-anchor="middle">Offset Predictor</text>
+  <text x="855" y="968" class="small" text-anchor="middle">Conv + BN + ReLU</text>
+  <text x="855" y="990" class="small" text-anchor="middle">Residual + Bottleneck</text>
+
+  <rect x="1035" y="880" width="165" height="64" rx="14" fill="#83c7e8" stroke="#427893" stroke-width="2"/>
+  <text x="1117" y="908" class="label" text-anchor="middle">Offset Head</text>
+  <text x="1117" y="930" class="small" text-anchor="middle">offset_x, offset_y</text>
+
+  <rect x="1035" y="996" width="165" height="64" rx="14" fill="#f0c84c" stroke="#9a7d17" stroke-width="2"/>
+  <text x="1117" y="1024" class="label" text-anchor="middle">Attention Head</text>
+  <text x="1117" y="1046" class="small" text-anchor="middle">attn weights</text>
+
+  <rect x="1270" y="915" width="210" height="110" rx="16" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="1375" y="943" class="label" text-anchor="middle">Deformable Sampling</text>
+  <text x="1375" y="968" class="small" text-anchor="middle">grid_sample on Z_i</text>
+  <text x="1375" y="990" class="small" text-anchor="middle">K = num_keypoints</text>
+
+  <rect x="1545" y="935" width="165" height="70" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1627" y="963" class="label" text-anchor="middle">Aligned Feature</text>
+  <text x="1627" y="987" class="small" text-anchor="middle">Z_hat_i</text>
+
+  <rect x="1765" y="935" width="190" height="70" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="1860" y="963" class="label" text-anchor="middle">Anchor-Aware</text>
+  <text x="1860" y="987" class="label" text-anchor="middle">Fusion(A, Z_hat_i)</text>
+
+  <rect x="1995" y="935" width="130" height="70" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="2060" y="963" class="label" text-anchor="middle">Fused Band</text>
+  <text x="2060" y="987" class="small" text-anchor="middle">Z_tilde_i</text>
+
+  <rect x="1775" y="1088" width="170" height="60" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="1860" y="1115" class="label" text-anchor="middle">Anchor band A</text>
+  <text x="1860" y="1137" class="small" text-anchor="middle">identity path</text>
+
+  <rect x="1970" y="1088" width="160" height="60" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="2050" y="1115" class="label" text-anchor="middle">Stack all bands</text>
+  <text x="2050" y="1137" class="small" text-anchor="middle">restore Z~</text>
+
+  <path class="arrow" d="M205 970 H260"/>
+  <path class="arrow" d="M425 970 H460"/>
+  <path class="arrow" d="M425 970 H470"/>
+  <path class="arrow" d="M685 970 H740"/>
+  <path class="arrow" d="M970 970 H1005 V912 H1035"/>
+  <path class="arrow" d="M970 970 H1005 V1028 H1035"/>
+  <path class="arrow" d="M1200 912 H1270"/>
+  <path class="arrow" d="M1200 1028 H1270"/>
+  <path class="arrow" d="M1480 970 H1545"/>
+  <path class="arrow" d="M1710 970 H1765"/>
+  <path class="arrow" d="M1955 970 H1995"/>
+  <path class="thin" d="M342 1005 V1118 H1775"/>
+  <path class="thin" d="M2125 970 V1118 H1970"/>
+  <path class="thin" d="M1945 1118 H1970"/>
+
+  <rect x="70" y="1140" width="660" height="42" rx="12" fill="#fff3de" stroke="#d0a56d" stroke-width="1.5"/>
+  <text x="400" y="1167" class="small" text-anchor="middle">Current config note: N = 7, C2 = 32 at stem stage, FixedBandCMDA uses num_keypoints = 9</text>
+</svg>

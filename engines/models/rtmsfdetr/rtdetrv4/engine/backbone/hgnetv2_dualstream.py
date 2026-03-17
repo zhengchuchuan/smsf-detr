@@ -1537,7 +1537,7 @@ class HGNetv2DualStream(nn.Module):
             pred = aligner.predict(ref_pred, residual)
             if aligner.affine_enabled:
                 offset_x, offset_y, attn_weights, affine_theta = pred
-                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                residual_aligned, sampled_features, attn_exp = aligner.deform_with_attention(
                     residual,
                     offset_x=offset_x,
                     offset_y=offset_y,
@@ -1551,16 +1551,24 @@ class HGNetv2DualStream(nn.Module):
                     residual_aligned,
                     attn_exp,
                     affine_theta=affine_theta,
+                    sampled_features=sampled_features,
                 )
             else:
                 offset_x, offset_y, attn_weights = pred
-                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                residual_aligned, sampled_features, attn_exp = aligner.deform_with_attention(
                     residual,
                     offset_x=offset_x,
                     offset_y=offset_y,
                     attention_weights=attn_weights,
                 )
-                loss_dict = aligner.loss_calculate(ref_pred, offset_x, offset_y, residual_aligned, attn_exp)
+                loss_dict = aligner.loss_calculate(
+                    ref_pred,
+                    offset_x,
+                    offset_y,
+                    residual_aligned,
+                    attn_exp,
+                    sampled_features=sampled_features,
+                )
 
             loss_added = False
             if self.ms_residual_post_align_loss_weight > 0 and "loss_deform_align" in loss_dict:
@@ -1667,7 +1675,7 @@ class HGNetv2DualStream(nn.Module):
                 offset_x, offset_y, attn_weights = pred
                 affine_theta = None
 
-            ms_aligned_loss, _, _ = aligner.deform_with_attention(
+            ms_aligned_loss, sampled_features_loss, _ = aligner.deform_with_attention(
                 ms_src,
                 offset_x=offset_x,
                 offset_y=offset_y,
@@ -1691,6 +1699,7 @@ class HGNetv2DualStream(nn.Module):
                 ms_aligned_loss,
                 attn_weights,
                 affine_theta=affine_theta,
+                sampled_features=sampled_features_loss,
             )
             ms = ms_aligned
             for lk, lv in stage_losses.items():
@@ -1808,7 +1817,7 @@ class HGNetv2DualStream(nn.Module):
             pred = aligner.predict(ref, ms)
             if aligner.affine_enabled:
                 offset_x, offset_y, attn_weights, affine_theta = pred
-                ms_aligned, _, attn_weights = aligner.deform_with_attention(
+                ms_aligned, sampled_features, attn_weights = aligner.deform_with_attention(
                     ms,
                     offset_x=offset_x,
                     offset_y=offset_y,
@@ -1816,14 +1825,27 @@ class HGNetv2DualStream(nn.Module):
                     affine_theta=affine_theta,
                 )
                 stage_losses = aligner.loss_calculate(
-                    ref, offset_x, offset_y, ms_aligned, attn_weights, affine_theta=affine_theta
+                    ref,
+                    offset_x,
+                    offset_y,
+                    ms_aligned,
+                    attn_weights,
+                    affine_theta=affine_theta,
+                    sampled_features=sampled_features,
                 )
             else:
                 offset_x, offset_y, attn_weights = pred
-                ms_aligned, _, attn_weights = aligner.deform_with_attention(
+                ms_aligned, sampled_features, attn_weights = aligner.deform_with_attention(
                     ms, offset_x=offset_x, offset_y=offset_y, attention_weights=attn_weights
                 )
-                stage_losses = aligner.loss_calculate(ref, offset_x, offset_y, ms_aligned, attn_weights)
+                stage_losses = aligner.loss_calculate(
+                    ref,
+                    offset_x,
+                    offset_y,
+                    ms_aligned,
+                    attn_weights,
+                    sampled_features=sampled_features,
+                )
             ms = ms_aligned
             for lk, lv in stage_losses.items():
                 if torch.is_tensor(lv):

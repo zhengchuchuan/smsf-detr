@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1560" viewBox="0 0 2400 1560">
+  <defs>
+    <style>
+      .title { font: 700 34px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #222; }
+      .section { font: 700 24px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #222; }
+      .label { font: 600 18px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #222; }
+      .text { font: 16px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #333; }
+      .small { font: 14px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #4b4b4b; }
+      .note { font: 600 16px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #5a4630; }
+      .arrow { stroke: #333; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .thin { stroke: #555; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"/>
+    </marker>
+  </defs>
+
+  <rect x="16" y="16" width="2368" height="1528" rx="24" fill="#fbfbfb" stroke="#d0d0d0" stroke-width="2"/>
+  <text x="1200" y="60" class="title" text-anchor="middle">MSDeformAttn 模块可视化</text>
+  <text x="1200" y="92" class="small" text-anchor="middle">对应代码：engines/models/msifdetr/common/ops/modules/ms_deform_attn.py 与 functions/ms_deform_attn_func.py</text>
+
+  <rect x="50" y="120" width="2300" height="88" rx="12" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="85" y="150" class="note">当前 `StemCFInteractive2D` 中的使用方式：</text>
+  <text x="390" y="150" class="text">单尺度设置，即 `n_levels=1`，`query_len = H×W`，`input_len = H×W`，常用 `n_heads=4`，`n_points=4`。</text>
+  <text x="85" y="178" class="text">因此下图在保留通用符号 `L, P, N_h` 的同时，特别标出当前最常见的单尺度形状。</text>
+
+  <!-- Section A -->
+  <rect x="40" y="240" width="2320" height="470" rx="20" fill="#f6f1e6" stroke="#c7b28c" stroke-width="2"/>
+  <text x="1200" y="276" class="section" text-anchor="middle">A. 输入与三条参数生成分支</text>
+
+  <rect x="70" y="360" width="220" height="94" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="180" y="394" class="label" text-anchor="middle">query</text>
+  <text x="180" y="422" class="small" text-anchor="middle">(B, Len_q, C)</text>
+  <text x="180" y="444" class="small" text-anchor="middle">当前 StemCF 中：Len_q = H×W</text>
+
+  <rect x="70" y="520" width="220" height="94" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="180" y="554" class="label" text-anchor="middle">input_flatten / memory</text>
+  <text x="180" y="582" class="small" text-anchor="middle">(B, Len_in, C)</text>
+  <text x="180" y="604" class="small" text-anchor="middle">当前 StemCF 中：Len_in = H×W</text>
+
+  <rect x="360" y="300" width="240" height="90" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="480" y="334" class="label" text-anchor="middle">reference_points</text>
+  <text x="480" y="362" class="small" text-anchor="middle">(B, Len_q, L, 2) 或 (…,4)</text>
+  <text x="480" y="384" class="small" text-anchor="middle">当前 StemCF： (B, H×W, 1, 2)</text>
+
+  <rect x="360" y="430" width="240" height="90" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="480" y="464" class="label" text-anchor="middle">input_spatial_shapes</text>
+  <text x="480" y="492" class="small" text-anchor="middle">(L,2) = [(H₁,W₁), …, (H_L,W_L)]</text>
+  <text x="480" y="514" class="small" text-anchor="middle">当前 StemCF：[(H,W)]</text>
+
+  <rect x="360" y="560" width="240" height="90" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="480" y="594" class="label" text-anchor="middle">input_level_start_index</text>
+  <text x="480" y="620" class="small" text-anchor="middle">(L)</text>
+  <text x="480" y="640" class="small" text-anchor="middle">当前 StemCF： [0]</text>
+
+  <rect x="700" y="270" width="260" height="94" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="830" y="304" class="label" text-anchor="middle">sampling_offsets(query)</text>
+  <text x="830" y="332" class="small" text-anchor="middle">Linear: C → N_h·L·P·2</text>
+  <text x="830" y="354" class="small" text-anchor="middle">输出重排为 (B,Len_q,N_h,L,P,2)</text>
+
+  <rect x="700" y="410" width="260" height="94" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="830" y="444" class="label" text-anchor="middle">attention_weights(query)</text>
+  <text x="830" y="472" class="small" text-anchor="middle">Linear: C → N_h·L·P</text>
+  <text x="830" y="494" class="small" text-anchor="middle">输出重排为 (B,Len_q,N_h,L·P)</text>
+
+  <rect x="700" y="550" width="260" height="94" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="830" y="584" class="label" text-anchor="middle">value_proj(input_flatten)</text>
+  <text x="830" y="612" class="small" text-anchor="middle">Linear: C → C</text>
+  <text x="830" y="634" class="small" text-anchor="middle">value: (B,Len_in,C)</text>
+
+  <rect x="1070" y="270" width="280" height="94" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1210" y="304" class="label" text-anchor="middle">sampling_offsets reshape</text>
+  <text x="1210" y="332" class="small" text-anchor="middle">(B,Len_q,N_h,L,P,2)</text>
+  <text x="1210" y="354" class="small" text-anchor="middle">当前单尺度： (B,HW,N_h,1,P,2)</text>
+
+  <rect x="1070" y="410" width="280" height="94" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1210" y="444" class="label" text-anchor="middle">attention_weights + softmax</text>
+  <text x="1210" y="472" class="small" text-anchor="middle">(B,Len_q,N_h,L·P)</text>
+  <text x="1210" y="494" class="small" text-anchor="middle">当前单尺度： (B,HW,N_h,P)</text>
+
+  <rect x="1070" y="550" width="280" height="94" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1210" y="584" class="label" text-anchor="middle">value transpose + view</text>
+  <text x="1210" y="612" class="small" text-anchor="middle">(B,N_h,D_h,Len_in)</text>
+  <text x="1210" y="634" class="small" text-anchor="middle">其中 D_h = C / N_h</text>
+
+  <rect x="1450" y="340" width="280" height="120" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="1590" y="374" class="label" text-anchor="middle">sampling_locations</text>
+  <text x="1590" y="402" class="small" text-anchor="middle">reference_points + offsets / normalizer</text>
+  <text x="1590" y="426" class="small" text-anchor="middle">(B,Len_q,N_h,L,P,2)</text>
+  <text x="1590" y="448" class="small" text-anchor="middle">当前单尺度： (B,HW,N_h,1,P,2)</text>
+
+  <!-- Arrows A -->
+  <path class="arrow" d="M290 407 H650 V317 H700"/>
+  <path class="arrow" d="M290 407 H650 V457 H700"/>
+  <path class="arrow" d="M290 567 H650 V597 H700"/>
+  <path class="arrow" d="M960 317 H1070"/>
+  <path class="arrow" d="M960 457 H1070"/>
+  <path class="arrow" d="M960 597 H1070"/>
+  <path class="thin" d="M600 345 H1400 V380 H1450"/>
+  <path class="thin" d="M600 475 H1420 V440 H1450"/>
+  <path class="thin" d="M1350 317 H1400 V420 H1450"/>
+
+  <!-- Section B -->
+  <rect x="40" y="750" width="2320" height="520" rx="20" fill="#eef6fb" stroke="#88aeca" stroke-width="2"/>
+  <text x="1200" y="786" class="section" text-anchor="middle">B. `ms_deform_attn_core_pytorch(...)` 的采样与聚合过程</text>
+
+  <rect x="70" y="870" width="250" height="92" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="195" y="904" class="label" text-anchor="middle">按层切分 value</text>
+  <text x="195" y="932" class="small" text-anchor="middle">value.split([H_l·W_l], dim=3)</text>
+  <text x="195" y="954" class="small" text-anchor="middle">每层： (B,N_h,D_h,H_l·W_l)</text>
+
+  <rect x="70" y="1010" width="250" height="92" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="195" y="1044" class="label" text-anchor="middle">reshape 每层 value_l</text>
+  <text x="195" y="1072" class="small" text-anchor="middle">(B·N_h,D_h,H_l,W_l)</text>
+
+  <rect x="390" y="870" width="280" height="92" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="530" y="904" class="label" text-anchor="middle">sampling_locations → grid</text>
+  <text x="530" y="932" class="small" text-anchor="middle">sampling_grids = 2·loc - 1</text>
+  <text x="530" y="954" class="small" text-anchor="middle">把 [0,1] 坐标转成 grid_sample 的 [-1,1]</text>
+
+  <rect x="390" y="1010" width="280" height="92" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="530" y="1044" class="label" text-anchor="middle">每层每头重排 grid</text>
+  <text x="530" y="1072" class="small" text-anchor="middle">(B·N_h, Len_q, P, 2)</text>
+
+  <rect x="760" y="930" width="270" height="110" rx="14" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="895" y="964" class="label" text-anchor="middle">grid_sample</text>
+  <text x="895" y="992" class="small" text-anchor="middle">在每个 level 的 value_l 上</text>
+  <text x="895" y="1016" class="small" text-anchor="middle">做双线性局部采样</text>
+  <text x="895" y="1038" class="small" text-anchor="middle">输出： (B·N_h,D_h,Len_q,P)</text>
+
+  <rect x="1120" y="870" width="260" height="92" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1250" y="904" class="label" text-anchor="middle">stack + flatten</text>
+  <text x="1250" y="932" class="small" text-anchor="middle">把所有 level 的采样值堆叠</text>
+  <text x="1250" y="954" class="small" text-anchor="middle">→ (B·N_h,D_h,Len_q,L·P)</text>
+
+  <rect x="1120" y="1010" width="260" height="92" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1250" y="1044" class="label" text-anchor="middle">attention reshape</text>
+  <text x="1250" y="1072" class="small" text-anchor="middle">(B·N_h,1,Len_q,L·P)</text>
+
+  <rect x="1470" y="930" width="280" height="110" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1610" y="964" class="label" text-anchor="middle">加权求和</text>
+  <text x="1610" y="992" class="small" text-anchor="middle">(sampled_values * attention).sum(-1)</text>
+  <text x="1610" y="1016" class="small" text-anchor="middle">→ (B,N_h·D_h,Len_q)</text>
+  <text x="1610" y="1038" class="small" text-anchor="middle">即 (B,C,Len_q)</text>
+
+  <rect x="1840" y="930" width="220" height="110" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1950" y="964" class="label" text-anchor="middle">transpose</text>
+  <text x="1950" y="992" class="small" text-anchor="middle">(B,Len_q,C)</text>
+  <text x="1950" y="1016" class="small" text-anchor="middle">作为 core 输出</text>
+
+  <rect x="2140" y="930" width="180" height="110" rx="14" fill="#dfe9c8" stroke="#77855c" stroke-width="2"/>
+  <text x="2230" y="964" class="label" text-anchor="middle">output_proj</text>
+  <text x="2230" y="992" class="small" text-anchor="middle">Linear: C → C</text>
+  <text x="2230" y="1016" class="small" text-anchor="middle">最终输出：(B,Len_q,C)</text>
+
+  <rect x="330" y="1140" width="1760" height="92" rx="14" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="380" y="1174" class="note">核心公式：</text>
+  <text x="560" y="1174" class="text">sampling_locations = reference_points + sampling_offsets / normalizer</text>
+  <text x="380" y="1206" class="text">output(q) = Σ_{l=1}^{L} Σ_{p=1}^{P} A(q,l,p) · sample(V_l, sampling_locations(q,l,p))</text>
+
+  <!-- Section C -->
+  <rect x="40" y="1310" width="2320" height="210" rx="20" fill="#f7f7f7" stroke="#bbbbbb" stroke-width="2"/>
+  <text x="1200" y="1346" class="section" text-anchor="middle">C. 与 `DeformableAlign2D` 的关系</text>
+  <text x="120" y="1390" class="text">共同点：底层都使用“预测偏移 + 双线性采样 + 加权聚合”的可变形采样思想。</text>
+  <text x="120" y="1424" class="text">不同点：`MSDeformAttn` 由 `query` 直接生成 offsets / weights，并以 `value_proj(memory)` 作为内容源；它输出的是 query 引导的读取结果，而不是显式 warp 后的 `src`。</text>
+  <text x="120" y="1458" class="text">在 `StemCFInteractive2D` 中，`MSDeformAttn` 输出 `(B,HW,C)` 后，还会在模块外被 reshape 回 `(B,C,H,W)` 再进行 `delta_fuse` 与残差写回。</text>
+
+  <!-- Arrows B -->
+  <path class="arrow" d="M195 962 V1010"/>
+  <path class="arrow" d="M530 962 V1010"/>
+  <path class="arrow" d="M320 1056 H520 V968 H760"/>
+  <path class="arrow" d="M670 1056 H720 V1002 H760"/>
+  <path class="arrow" d="M1030 968 H1070 V916 H1120"/>
+  <path class="arrow" d="M1380 916 H1430 V968 H1470"/>
+  <path class="arrow" d="M1380 1056 H1430 V1002 H1470"/>
+  <path class="arrow" d="M1750 985 H1840"/>
+  <path class="arrow" d="M2060 985 H2140"/>
+
+</svg>

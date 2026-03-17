@@ -1,0 +1,232 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1450" viewBox="0 0 2200 1450">
+  <defs>
+    <style>
+      .title { font: 700 30px Arial, sans-serif; fill: #2b2b2b; }
+      .section { font: 700 22px Arial, sans-serif; fill: #2b2b2b; }
+      .label { font: 600 18px Arial, sans-serif; fill: #2b2b2b; }
+      .text { font: 16px Arial, sans-serif; fill: #333333; }
+      .small { font: 14px Arial, sans-serif; fill: #4b4b4b; }
+      .note { font: 600 16px Arial, sans-serif; fill: #5a4630; }
+      .border { stroke: #6f6f6f; stroke-width: 2; fill: none; }
+      .dash { stroke: #8d8d8d; stroke-width: 2; stroke-dasharray: 8 6; fill: none; }
+      .arrow { stroke: #333333; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .thin { stroke: #555555; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333"/>
+    </marker>
+  </defs>
+
+  <rect x="16" y="16" width="2168" height="1418" rx="26" fill="#fbfbfb" stroke="#d0d0d0" stroke-width="2"/>
+  <text x="1100" y="56" class="title" text-anchor="middle">StemCFInteractive2D Structure and Deformable Fusion Principle</text>
+  <text x="1100" y="86" class="small" text-anchor="middle">Code-aligned with engines/models/rtmsfdetr/rtdetrv4/engine/backbone/stem_cf_interactive.py</text>
+
+  <!-- Section 1 -->
+  <rect x="40" y="120" width="2120" height="560" rx="22" fill="#f6f1e6" stroke="#c7b28c" stroke-width="2"/>
+  <text x="1100" y="156" class="section" text-anchor="middle">A. Overall Structure of StemCFInteractive2D</text>
+
+  <!-- Inputs -->
+  <rect x="70" y="240" width="180" height="74" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="160" y="268" class="label" text-anchor="middle">Main Stem Feature</text>
+  <text x="160" y="290" class="small" text-anchor="middle">query_feat</text>
+  <text x="160" y="308" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="70" y="408" width="180" height="74" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="160" y="436" class="label" text-anchor="middle">Residual MS Feature</text>
+  <text x="160" y="458" class="small" text-anchor="middle">memory_feat</text>
+  <text x="160" y="476" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="320" y="240" width="170" height="74" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="405" y="268" class="label" text-anchor="middle">query_pre</text>
+  <text x="405" y="290" class="small" text-anchor="middle">1x1 Conv + GN</text>
+  <text x="405" y="308" class="small" text-anchor="middle">+ ReLU</text>
+
+  <rect x="320" y="408" width="170" height="74" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="405" y="430" class="label" text-anchor="middle">Optional</text>
+  <text x="405" y="452" class="label" text-anchor="middle">memory detach</text>
+  <text x="405" y="474" class="small" text-anchor="middle">memory_src = detach(memory_feat)</text>
+
+  <rect x="560" y="240" width="180" height="74" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="650" y="268" class="label" text-anchor="middle">Flatten Query</text>
+  <text x="650" y="290" class="small" text-anchor="middle">(B,C,H,W)</text>
+  <text x="650" y="308" class="small" text-anchor="middle">to (B,HW,C)</text>
+
+  <rect x="560" y="408" width="180" height="74" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="650" y="436" class="label" text-anchor="middle">memory_pre</text>
+  <text x="650" y="458" class="small" text-anchor="middle">1x1 Conv + GN + ReLU</text>
+  <text x="650" y="476" class="small" text-anchor="middle">then flatten to (B,HW,C)</text>
+
+  <rect x="820" y="190" width="230" height="84" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="935" y="220" class="label" text-anchor="middle">Build Reference Grid</text>
+  <text x="935" y="244" class="small" text-anchor="middle">from query lattice</text>
+  <text x="935" y="264" class="small" text-anchor="middle">reference_points: (B,HW,1,2)</text>
+
+  <rect x="820" y="316" width="230" height="84" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="935" y="346" class="label" text-anchor="middle">Learnable Ref Shift</text>
+  <text x="935" y="370" class="small" text-anchor="middle">global 2D offset</text>
+  <text x="935" y="390" class="small" text-anchor="middle">small tanh-bounded perturbation</text>
+
+  <rect x="1140" y="240" width="340" height="190" rx="18" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="1310" y="272" class="label" text-anchor="middle">MSDeformAttn</text>
+  <text x="1310" y="300" class="small" text-anchor="middle">single-scale deformable cross-attention</text>
+  <text x="1310" y="328" class="small" text-anchor="middle">query tokens + reference points</text>
+  <text x="1310" y="356" class="small" text-anchor="middle">sample over memory/value tokens</text>
+  <text x="1310" y="384" class="small" text-anchor="middle">produce delta tokens D in query coordinates</text>
+  <text x="1310" y="414" class="note" text-anchor="middle">not standard QK^T V</text>
+
+  <rect x="1560" y="240" width="170" height="74" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1645" y="268" class="label" text-anchor="middle">Delta Tokens</text>
+  <text x="1645" y="290" class="small" text-anchor="middle">(B,HW,C)</text>
+  <text x="1645" y="308" class="small" text-anchor="middle">from MSDeformAttn</text>
+
+  <rect x="1560" y="356" width="170" height="74" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1645" y="384" class="label" text-anchor="middle">Reshape Delta</text>
+  <text x="1645" y="406" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="1810" y="240" width="180" height="74" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="1900" y="268" class="label" text-anchor="middle">Concat</text>
+  <text x="1900" y="290" class="small" text-anchor="middle">[query_feat, delta]</text>
+  <text x="1900" y="308" class="small" text-anchor="middle">along channel dim</text>
+
+  <rect x="1810" y="356" width="180" height="74" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1900" y="384" class="label" text-anchor="middle">delta_fuse</text>
+  <text x="1900" y="406" class="small" text-anchor="middle">1x1 Conv + GN + ReLU</text>
+  <text x="1900" y="424" class="small" text-anchor="middle">+ 1x1 Conv</text>
+
+  <rect x="1810" y="470" width="180" height="74" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="1900" y="498" class="label" text-anchor="middle">Scaled Correction</text>
+  <text x="1900" y="520" class="small" text-anchor="middle">output_scale * correction</text>
+  <text x="1900" y="538" class="small" text-anchor="middle">small conservative write-back</text>
+
+  <rect x="2060" y="356" width="110" height="74" rx="14" fill="#ffffff" stroke="#666666" stroke-width="2"/>
+  <text x="2115" y="384" class="label" text-anchor="middle">Residual</text>
+  <text x="2115" y="406" class="label" text-anchor="middle">Add</text>
+
+  <rect x="2045" y="490" width="140" height="74" rx="14" fill="#dfe9c8" stroke="#77855c" stroke-width="2"/>
+  <text x="2115" y="518" class="label" text-anchor="middle">Output F_cf</text>
+  <text x="2115" y="540" class="small" text-anchor="middle">query_feat + scaled correction</text>
+
+  <!-- Notes -->
+  <rect x="120" y="560" width="1960" height="88" rx="16" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="160" y="592" class="note">Interpretation:</text>
+  <text x="305" y="592" class="text">the main stem feature stays as the update target; the residual MS feature is treated as support memory.</text>
+  <text x="160" y="620" class="text">The deformable interaction first reads support information in query coordinates, then writes back only a small residual correction.</text>
+
+  <!-- Arrows section 1 -->
+  <path class="arrow" d="M250 277 H320"/>
+  <path class="arrow" d="M250 445 H320"/>
+  <path class="arrow" d="M490 277 H560"/>
+  <path class="arrow" d="M490 445 H560"/>
+  <path class="arrow" d="M740 277 H1140"/>
+  <path class="arrow" d="M740 445 H1140"/>
+  <path class="thin" d="M935 274 V316"/>
+  <path class="thin" d="M1050 232 H1100 V260 H1140"/>
+  <path class="thin" d="M1050 358 H1090 V402 H1140"/>
+  <path class="arrow" d="M1480 277 H1560"/>
+  <path class="arrow" d="M1645 314 V356"/>
+  <path class="arrow" d="M1730 277 H1810"/>
+  <path class="thin" d="M190 314 V334 H1760 V277 H1810"/>
+  <path class="arrow" d="M1900 314 V356"/>
+  <path class="arrow" d="M1900 430 V470"/>
+  <path class="thin" d="M1990 507 H2060 V430"/>
+  <path class="thin" d="M190 314 V393 H2060"/>
+  <path class="thin" d="M2115 430 V490"/>
+
+  <!-- Section 2 -->
+  <rect x="40" y="730" width="2120" height="675" rx="22" fill="#eef6fb" stroke="#88aeca" stroke-width="2"/>
+  <text x="1100" y="766" class="section" text-anchor="middle">B. Internal Principle of Deformable Fusion inside MSDeformAttn</text>
+
+  <rect x="80" y="850" width="195" height="84" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="178" y="880" class="label" text-anchor="middle">Query Tokens</text>
+  <text x="178" y="904" class="small" text-anchor="middle">Q from main stem</text>
+  <text x="178" y="924" class="small" text-anchor="middle">(B,HW,C)</text>
+
+  <rect x="80" y="1048" width="195" height="84" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="178" y="1078" class="label" text-anchor="middle">Memory Tokens</text>
+  <text x="178" y="1102" class="small" text-anchor="middle">support from residual branch</text>
+  <text x="178" y="1122" class="small" text-anchor="middle">(B,HW,C)</text>
+
+  <rect x="80" y="1240" width="195" height="84" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="178" y="1270" class="label" text-anchor="middle">Reference Points</text>
+  <text x="178" y="1294" class="small" text-anchor="middle">regular query grid</text>
+  <text x="178" y="1314" class="small" text-anchor="middle">(B,HW,1,2)</text>
+
+  <rect x="380" y="810" width="220" height="92" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="490" y="842" class="label" text-anchor="middle">sampling_offsets(Q)</text>
+  <text x="490" y="868" class="small" text-anchor="middle">query predicts K local offsets</text>
+  <text x="490" y="888" class="small" text-anchor="middle">for each head and token</text>
+
+  <rect x="380" y="938" width="220" height="92" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="490" y="970" class="label" text-anchor="middle">attention_weights(Q)</text>
+  <text x="490" y="996" class="small" text-anchor="middle">query predicts mixing weights</text>
+  <text x="490" y="1016" class="small" text-anchor="middle">for sampled support points</text>
+
+  <rect x="380" y="1066" width="220" height="92" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="490" y="1098" class="label" text-anchor="middle">value_proj(memory)</text>
+  <text x="490" y="1124" class="small" text-anchor="middle">project support tokens</text>
+  <text x="490" y="1144" class="small" text-anchor="middle">to value features V</text>
+
+  <rect x="710" y="850" width="250" height="84" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="835" y="880" class="label" text-anchor="middle">Sampling Locations</text>
+  <text x="835" y="904" class="small" text-anchor="middle">reference_points + offsets</text>
+  <text x="835" y="924" class="small" text-anchor="middle">in normalized query coordinates</text>
+
+  <rect x="710" y="978" width="250" height="84" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="835" y="1008" class="label" text-anchor="middle">Normalized Weights</text>
+  <text x="835" y="1032" class="small" text-anchor="middle">softmax over sampled points</text>
+  <text x="835" y="1052" class="small" text-anchor="middle">per head and token</text>
+
+  <rect x="710" y="1106" width="250" height="84" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="835" y="1136" class="label" text-anchor="middle">Value Features V</text>
+  <text x="835" y="1160" class="small" text-anchor="middle">support content source</text>
+  <text x="835" y="1180" class="small" text-anchor="middle">to be sampled deformably</text>
+
+  <rect x="1080" y="928" width="360" height="170" rx="18" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="1260" y="960" class="label" text-anchor="middle">Deformable Sampling and Aggregation</text>
+  <text x="1260" y="992" class="small" text-anchor="middle">sample V at predicted locations</text>
+  <text x="1260" y="1020" class="small" text-anchor="middle">apply predicted weights</text>
+  <text x="1260" y="1048" class="small" text-anchor="middle">sum sampled support features</text>
+  <text x="1260" y="1076" class="note" text-anchor="middle">query decides where to read from memory</text>
+
+  <rect x="1530" y="928" width="220" height="84" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1640" y="958" class="label" text-anchor="middle">output_proj</text>
+  <text x="1640" y="982" class="small" text-anchor="middle">map aggregated tokens</text>
+  <text x="1640" y="1002" class="small" text-anchor="middle">back to channel space</text>
+
+  <rect x="1530" y="1044" width="220" height="84" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1640" y="1074" class="label" text-anchor="middle">Delta Tokens D</text>
+  <text x="1640" y="1098" class="small" text-anchor="middle">interaction result</text>
+  <text x="1640" y="1118" class="small" text-anchor="middle">still in query lattice</text>
+
+  <rect x="1850" y="900" width="250" height="120" rx="16" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="1975" y="934" class="note" text-anchor="middle">Key point</text>
+  <text x="1975" y="962" class="small" text-anchor="middle">this is not full dense attention</text>
+  <text x="1975" y="986" class="small" text-anchor="middle">over all support positions.</text>
+  <text x="1975" y="1010" class="small" text-anchor="middle">Only a small set of learned local</text>
+  <text x="1975" y="1034" class="small" text-anchor="middle">sampling points is used.</text>
+
+  <rect x="1850" y="1074" width="250" height="170" rx="16" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="1975" y="1108" class="note" text-anchor="middle">Paper wording</text>
+  <text x="1975" y="1136" class="small" text-anchor="middle">query-guided deformable support reading</text>
+  <text x="1975" y="1162" class="small" text-anchor="middle">or</text>
+  <text x="1975" y="1188" class="small" text-anchor="middle">single-scale deformable cross-feature</text>
+  <text x="1975" y="1214" class="small" text-anchor="middle">interaction at the stem grid</text>
+
+  <rect x="120" y="1340" width="1960" height="48" rx="12" fill="#ffffff" stroke="#8eb0c7" stroke-width="2"/>
+  <text x="1100" y="1370" class="text" text-anchor="middle">Fusion principle: first read support features deformably in query coordinates, then convert the readout into a small residual correction for the main stem feature.</text>
+
+  <!-- Arrows section 2 -->
+  <path class="arrow" d="M275 892 H380"/>
+  <path class="arrow" d="M275 892 H330 V984 H380"/>
+  <path class="arrow" d="M275 1090 H380"/>
+  <path class="arrow" d="M275 1282 H330 V892 H380"/>
+  <path class="arrow" d="M600 856 H710"/>
+  <path class="arrow" d="M600 984 H710"/>
+  <path class="arrow" d="M600 1112 H710"/>
+  <path class="thin" d="M960 892 H1030 V964 H1080"/>
+  <path class="thin" d="M960 1020 H1080"/>
+  <path class="thin" d="M960 1148 H1030 V1062 H1080"/>
+  <path class="arrow" d="M1440 970 H1530"/>
+  <path class="arrow" d="M1640 1012 V1044"/>
+
+</svg>

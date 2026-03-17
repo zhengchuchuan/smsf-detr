@@ -1,0 +1,217 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1400" viewBox="0 0 2200 1400">
+  <defs>
+    <style>
+      .title { font: 700 32px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #2b2b2b; }
+      .section { font: 700 23px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #2b2b2b; }
+      .label { font: 600 18px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #2b2b2b; }
+      .text { font: 16px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #333333; }
+      .small { font: 14px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #4b4b4b; }
+      .note { font: 600 16px 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #5a4630; }
+      .arrow { stroke: #333333; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .thin { stroke: #555555; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333"/>
+    </marker>
+  </defs>
+
+  <rect x="16" y="16" width="2168" height="1368" rx="26" fill="#fbfbfb" stroke="#d0d0d0" stroke-width="2"/>
+  <text x="1100" y="60" class="title" text-anchor="middle">StemCFInteractive2D 模块结构图</text>
+  <text x="1100" y="92" class="small" text-anchor="middle">对应代码：engines/models/rtmsfdetr/rtdetrv4/engine/backbone/stem_cf_interactive.py</text>
+
+  <!-- Section 1 -->
+  <rect x="40" y="120" width="2120" height="520" rx="22" fill="#f7f1e4" stroke="#c7b28c" stroke-width="2"/>
+  <text x="1100" y="158" class="section" text-anchor="middle">一、StemCFInteractive2D 整体流程</text>
+
+  <!-- Inputs -->
+  <rect x="70" y="250" width="190" height="84" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="165" y="282" class="label" text-anchor="middle">主干浅层特征</text>
+  <text x="165" y="308" class="small" text-anchor="middle">F_main / query_feat</text>
+  <text x="165" y="328" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="70" y="420" width="190" height="84" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="165" y="452" class="label" text-anchor="middle">残差 MS 特征</text>
+  <text x="165" y="478" class="small" text-anchor="middle">F_res / memory_feat</text>
+  <text x="165" y="498" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="340" y="250" width="180" height="84" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="430" y="282" class="label" text-anchor="middle">query_pre</text>
+  <text x="430" y="308" class="small" text-anchor="middle">1×1 Conv + GN</text>
+  <text x="430" y="328" class="small" text-anchor="middle">+ ReLU</text>
+
+  <rect x="340" y="420" width="180" height="84" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="430" y="450" class="label" text-anchor="middle">memory_detach</text>
+  <text x="430" y="476" class="small" text-anchor="middle">可选 detach</text>
+  <text x="430" y="496" class="small" text-anchor="middle">稳定 support memory</text>
+
+  <rect x="600" y="250" width="190" height="84" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="695" y="282" class="label" text-anchor="middle">展平 Query</text>
+  <text x="695" y="308" class="small" text-anchor="middle">(B,C,H,W)</text>
+  <text x="695" y="328" class="small" text-anchor="middle">→ (B,HW,C)</text>
+
+  <rect x="600" y="420" width="190" height="84" rx="14" fill="#bfe0ec" stroke="#5e8390" stroke-width="2"/>
+  <text x="695" y="452" class="label" text-anchor="middle">memory_pre + 展平</text>
+  <text x="695" y="478" class="small" text-anchor="middle">1×1 Conv + GN + ReLU</text>
+  <text x="695" y="498" class="small" text-anchor="middle">→ (B,HW,C)</text>
+
+  <rect x="870" y="205" width="245" height="92" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="992" y="238" class="label" text-anchor="middle">参考点网格构造</text>
+  <text x="992" y="264" class="small" text-anchor="middle">由主干网格生成 reference points</text>
+  <text x="992" y="286" class="small" text-anchor="middle">(B,HW,1,2)</text>
+
+  <rect x="870" y="338" width="245" height="92" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="992" y="370" class="label" text-anchor="middle">参考点微偏移</text>
+  <text x="992" y="396" class="small" text-anchor="middle">ref_shift</text>
+  <text x="992" y="418" class="small" text-anchor="middle">小幅全局可学习偏移</text>
+
+  <rect x="1200" y="250" width="360" height="190" rx="18" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="1380" y="284" class="label" text-anchor="middle">单尺度可变形交叉交互</text>
+  <text x="1380" y="316" class="small" text-anchor="middle">MSDeformAttn</text>
+  <text x="1380" y="346" class="small" text-anchor="middle">Query 来自主干，Memory 来自残差分支</text>
+  <text x="1380" y="374" class="small" text-anchor="middle">在 query 坐标系中到 support 上做局部可变形读取</text>
+  <text x="1380" y="404" class="note" text-anchor="middle">不是标准的全局 QK^T V 注意力</text>
+
+  <rect x="1640" y="250" width="180" height="84" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1730" y="282" class="label" text-anchor="middle">交互增量 D</text>
+  <text x="1730" y="308" class="small" text-anchor="middle">(B,HW,C)</text>
+  <text x="1730" y="328" class="small" text-anchor="middle">来自 support 的读取结果</text>
+
+  <rect x="1640" y="390" width="180" height="84" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1730" y="422" class="label" text-anchor="middle">reshape</text>
+  <text x="1730" y="448" class="small" text-anchor="middle">(B,C,H,W)</text>
+
+  <rect x="1900" y="250" width="185" height="84" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="1992" y="282" class="label" text-anchor="middle">拼接</text>
+  <text x="1992" y="308" class="small" text-anchor="middle">[F_main, D]</text>
+  <text x="1992" y="328" class="small" text-anchor="middle">按通道维 concat</text>
+
+  <rect x="1900" y="390" width="185" height="84" rx="14" fill="#cfe7f3" stroke="#64869a" stroke-width="2"/>
+  <text x="1992" y="422" class="label" text-anchor="middle">delta_fuse</text>
+  <text x="1992" y="448" class="small" text-anchor="middle">1×1 Conv + GN + ReLU</text>
+  <text x="1992" y="468" class="small" text-anchor="middle">+ 1×1 Conv</text>
+
+  <rect x="1900" y="530" width="185" height="84" rx="14" fill="#f8e4a8" stroke="#8e7d54" stroke-width="2"/>
+  <text x="1992" y="562" class="label" text-anchor="middle">保守写回</text>
+  <text x="1992" y="588" class="small" text-anchor="middle">output_scale × correction</text>
+  <text x="1992" y="608" class="small" text-anchor="middle">小幅残差修正</text>
+
+  <rect x="2130" y="390" width="60" height="84" rx="12" fill="#ffffff" stroke="#666666" stroke-width="2"/>
+  <text x="2160" y="440" class="label" text-anchor="middle">+</text>
+
+  <rect x="2100" y="530" width="90" height="84" rx="14" fill="#dfe9c8" stroke="#77855c" stroke-width="2"/>
+  <text x="2145" y="562" class="label" text-anchor="middle">F_cf</text>
+  <text x="2145" y="588" class="small" text-anchor="middle">交互后主干特征</text>
+
+  <rect x="120" y="560" width="1710" height="58" rx="12" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="975" y="596" class="text" text-anchor="middle">核心思想：先在主干网格中对残差分支信息做一次“受控读取”，再把读取结果以小残差形式写回主干。</text>
+
+  <!-- Arrows section 1 -->
+  <path class="arrow" d="M260 292 H340"/>
+  <path class="arrow" d="M260 462 H340"/>
+  <path class="arrow" d="M520 292 H600"/>
+  <path class="arrow" d="M520 462 H600"/>
+  <path class="arrow" d="M790 292 H1200"/>
+  <path class="arrow" d="M790 462 H1200"/>
+  <path class="thin" d="M992 297 V338"/>
+  <path class="thin" d="M1115 252 H1160 V286 H1200"/>
+  <path class="thin" d="M1115 384 H1170 V416 H1200"/>
+  <path class="arrow" d="M1560 292 H1640"/>
+  <path class="arrow" d="M1730 334 V390"/>
+  <path class="arrow" d="M1820 292 H1900"/>
+  <path class="thin" d="M165 334 V360 H1860 V292 H1900"/>
+  <path class="arrow" d="M1992 334 V390"/>
+  <path class="arrow" d="M1992 474 V530"/>
+  <path class="thin" d="M2085 572 H2130 V474"/>
+  <path class="thin" d="M165 334 V432 H2130"/>
+  <path class="thin" d="M2160 474 V530"/>
+
+  <!-- Section 2 -->
+  <rect x="40" y="690" width="2120" height="670" rx="22" fill="#eef6fb" stroke="#88aeca" stroke-width="2"/>
+  <text x="1100" y="728" class="section" text-anchor="middle">二、可变形采样融合原理（MSDeformAttn 内部）</text>
+
+  <rect x="80" y="810" width="210" height="90" rx="14" fill="#fff6cf" stroke="#a89257" stroke-width="2"/>
+  <text x="185" y="844" class="label" text-anchor="middle">Query Tokens</text>
+  <text x="185" y="870" class="small" text-anchor="middle">来自主干 F_main</text>
+
+  <rect x="80" y="1010" width="210" height="90" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="185" y="1044" class="label" text-anchor="middle">Memory / Value</text>
+  <text x="185" y="1070" class="small" text-anchor="middle">来自残差分支 F_res</text>
+
+  <rect x="80" y="1210" width="210" height="90" rx="14" fill="#fde9d0" stroke="#a57c45" stroke-width="2"/>
+  <text x="185" y="1244" class="label" text-anchor="middle">Reference Points</text>
+  <text x="185" y="1270" class="small" text-anchor="middle">query 对应的规则网格</text>
+
+  <rect x="390" y="770" width="260" height="96" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="520" y="804" class="label" text-anchor="middle">sampling_offsets(Q)</text>
+  <text x="520" y="832" class="small" text-anchor="middle">由 query 预测多个局部采样偏移</text>
+  <text x="520" y="854" class="small" text-anchor="middle">决定“去哪里读”</text>
+
+  <rect x="390" y="914" width="260" height="96" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="520" y="948" class="label" text-anchor="middle">attention_weights(Q)</text>
+  <text x="520" y="976" class="small" text-anchor="middle">由 query 预测采样点权重</text>
+  <text x="520" y="998" class="small" text-anchor="middle">决定“读多少”</text>
+
+  <rect x="390" y="1058" width="260" height="96" rx="14" fill="#ffffff" stroke="#888888" stroke-width="2"/>
+  <text x="520" y="1092" class="label" text-anchor="middle">value_proj(memory)</text>
+  <text x="520" y="1120" class="small" text-anchor="middle">把 support 投影成 value 特征</text>
+  <text x="520" y="1142" class="small" text-anchor="middle">作为被采样内容源</text>
+
+  <rect x="760" y="810" width="280" height="90" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="900" y="844" class="label" text-anchor="middle">采样位置</text>
+  <text x="900" y="870" class="small" text-anchor="middle">reference points + offsets</text>
+
+  <rect x="760" y="954" width="280" height="90" rx="14" fill="#fff0d7" stroke="#a56c38" stroke-width="2"/>
+  <text x="900" y="988" class="label" text-anchor="middle">采样权重</text>
+  <text x="900" y="1014" class="small" text-anchor="middle">softmax 后的 attention weights</text>
+
+  <rect x="760" y="1098" width="280" height="90" rx="14" fill="#dce9f7" stroke="#7b90a7" stroke-width="2"/>
+  <text x="900" y="1132" class="label" text-anchor="middle">Value 特征</text>
+  <text x="900" y="1158" class="small" text-anchor="middle">support 分支可被读取的内容</text>
+
+  <rect x="1140" y="930" width="390" height="180" rx="18" fill="#f8d64e" stroke="#9e7e20" stroke-width="2"/>
+  <text x="1335" y="964" class="label" text-anchor="middle">可变形采样与加权聚合</text>
+  <text x="1335" y="998" class="small" text-anchor="middle">在预测位置上对 value 特征做局部采样</text>
+  <text x="1335" y="1028" class="small" text-anchor="middle">再按预测权重进行加权求和</text>
+  <text x="1335" y="1058" class="small" text-anchor="middle">得到交互增量 D</text>
+  <text x="1335" y="1088" class="note" text-anchor="middle">本质：query 引导的 deformable support reading</text>
+
+  <rect x="1640" y="930" width="220" height="90" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1750" y="964" class="label" text-anchor="middle">output_proj</text>
+  <text x="1750" y="990" class="small" text-anchor="middle">线性映射回通道空间</text>
+
+  <rect x="1640" y="1060" width="220" height="90" rx="14" fill="#efeef7" stroke="#8b8a9e" stroke-width="2"/>
+  <text x="1750" y="1094" class="label" text-anchor="middle">Delta Tokens D</text>
+  <text x="1750" y="1120" class="small" text-anchor="middle">交互后的增量表示</text>
+
+  <rect x="1920" y="900" width="180" height="130" rx="16" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="2010" y="936" class="note" text-anchor="middle">不是标准注意力</text>
+  <text x="2010" y="968" class="small" text-anchor="middle">不是对所有位置做</text>
+  <text x="2010" y="992" class="small" text-anchor="middle">全局 QK^T V 匹配</text>
+  <text x="2010" y="1016" class="small" text-anchor="middle">而是只读少量局部采样点</text>
+
+  <rect x="1920" y="1070" width="180" height="150" rx="16" fill="#fffaf0" stroke="#d2af63" stroke-width="2"/>
+  <text x="2010" y="1106" class="note" text-anchor="middle">论文可用表述</text>
+  <text x="2010" y="1138" class="small" text-anchor="middle">主干引导的单尺度</text>
+  <text x="2010" y="1162" class="small" text-anchor="middle">可变形跨分支特征读取</text>
+  <text x="2010" y="1186" class="small" text-anchor="middle">或</text>
+  <text x="2010" y="1210" class="small" text-anchor="middle">基于 query 的局部可变形</text>
+  <text x="2010" y="1234" class="small" text-anchor="middle">support 读取机制</text>
+
+  <rect x="120" y="1318" width="1960" height="48" rx="12" fill="#ffffff" stroke="#8eb0c7" stroke-width="2"/>
+  <text x="1100" y="1348" class="text" text-anchor="middle">融合原理：先在主干坐标系中从残差分支读取局部补充信息，再将其转化为小幅残差修正，避免直接粗暴相加。</text>
+
+  <!-- Arrows section 2 -->
+  <path class="arrow" d="M290 855 H390"/>
+  <path class="arrow" d="M290 855 H340 V962 H390"/>
+  <path class="arrow" d="M290 1055 H390"/>
+  <path class="arrow" d="M290 1255 H340 V818 H390"/>
+  <path class="arrow" d="M650 818 H760"/>
+  <path class="arrow" d="M650 962 H760"/>
+  <path class="arrow" d="M650 1106 H760"/>
+  <path class="thin" d="M1040 855 H1100 V970 H1140"/>
+  <path class="thin" d="M1040 999 H1140"/>
+  <path class="thin" d="M1040 1143 H1100 V1070 H1140"/>
+  <path class="arrow" d="M1530 975 H1640"/>
+  <path class="arrow" d="M1750 1020 V1060"/>
+
+</svg>

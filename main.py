@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import os
 import subprocess
 import sys
@@ -21,45 +20,6 @@ from utils.seed import fixed_random_seed
 _AUTORUN_ENV_FLAG = "MSIFP_DETR_DISABLE_AUTORUN"
 
 
-def _truncate_utf8_bytes(value: str, max_bytes: int) -> str:
-    if max_bytes <= 0:
-        return ""
-    encoded = value.encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return value
-    return encoded[:max_bytes].decode("utf-8", errors="ignore")
-
-
-def _compact_path_component(value: str, max_bytes: int = 120) -> str:
-    text = str(value)
-    encoded = text.encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return text
-
-    digest = hashlib.sha1(encoded).hexdigest()[:10]
-    suffix = ""
-    stem = text
-    path = Path(text)
-    if path.suffix and path.name != path.suffix:
-        suffix = path.suffix
-        stem = text[:-len(suffix)]
-
-    reserved = len(digest) + 1 + len(suffix.encode("utf-8"))
-    head_budget = max_bytes - reserved
-    if head_budget < 16:
-        suffix = ""
-        reserved = len(digest) + 1
-        head_budget = max_bytes - reserved
-
-    head = _truncate_utf8_bytes(stem, head_budget)
-    compact = f"{head}-{digest}{suffix}"
-    if len(compact.encode("utf-8")) > max_bytes:
-        overflow = len(compact.encode("utf-8")) - max_bytes
-        head = _truncate_utf8_bytes(head, len(head.encode("utf-8")) - overflow)
-        compact = f"{head}-{digest}{suffix}"
-    return compact
-
-
 def _build_output_dir(
     *,
     output_root: str,
@@ -69,24 +29,17 @@ def _build_output_dir(
     config_name: str,
     timestamp: str,
 ) -> tuple[Path, dict[str, tuple[str, str]]]:
-    compacted = {
-        "dataset_name": (dataset_name, _compact_path_component(dataset_name, max_bytes=96)),
-        "model_name": (model_name, _compact_path_component(model_name, max_bytes=96)),
-        "model_alias": (model_alias, _compact_path_component(model_alias, max_bytes=120)),
-        "run_name": (
-            f"{timestamp}-{config_name}",
-            _compact_path_component(f"{timestamp}-{config_name}", max_bytes=160),
-        ),
-    }
+    # Path-component compaction is disabled so output directories keep the exact names
+    # from config fields such as model_alias.
+    run_name = f"{timestamp}-{config_name}"
     output_dir = (
         Path(output_root).expanduser()
-        / compacted["dataset_name"][1]
-        / compacted["model_name"][1]
-        / compacted["model_alias"][1]
-        / compacted["run_name"][1]
+        / str(dataset_name)
+        / str(model_name)
+        / str(model_alias)
+        / run_name
     )
-    renamed = {key: value for key, value in compacted.items() if value[0] != value[1]}
-    return output_dir, renamed
+    return output_dir, {}
 
 
 def _is_torchrun_distributed() -> bool:

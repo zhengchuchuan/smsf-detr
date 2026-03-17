@@ -19,6 +19,7 @@ from .eemsa import EEMSA
 from .group_deform_align import GroupwiseDeformableAlign2D, ProjectedGroupwiseDeformableAlign2D
 from .ms_band_sep import MSBandSeparatedStemAlign
 from .stem_cf_interactive import StemCFInteractive2D
+from .stem_cross_attention import StemCrossAttention2D
 from ..core import register
 import logging
 
@@ -67,6 +68,23 @@ def _parse_eemsa_locations(value: Any) -> set[str]:
 def _cfg_value(cfg: Mapping[str, Any], key: str, default: Any) -> Any:
     value = cfg.get(key, default)
     return default if value is None else value
+
+
+def _init_main_identity_concat_proj(conv: nn.Conv2d, main_channels: int) -> None:
+    if conv.kernel_size != (1, 1):
+        raise ValueError(f"Expected 1x1 conv for direct fusion init, got kernel_size={conv.kernel_size}")
+    out_ch, in_ch, _, _ = conv.weight.shape
+    if out_ch != int(main_channels) or in_ch != int(main_channels) * 2:
+        raise ValueError(
+            "Direct fusion init expects Conv2d(C*2 -> C, 1x1), "
+            f"got weight shape={tuple(conv.weight.shape)}, main_channels={main_channels}"
+        )
+    nn.init.constant_(conv.weight, 0.0)
+    if conv.bias is not None:
+        nn.init.constant_(conv.bias, 0.0)
+    with torch.no_grad():
+        idx = torch.arange(int(main_channels), device=conv.weight.device)
+        conv.weight[idx, idx, 0, 0] = 1.0
 
 
 def _normalize_stage_idx(key: Any) -> int:
@@ -596,7 +614,7 @@ class HGNetv2(nn.Module):
         self.ms_residual_fusion_mode = "add"
         self.ms_residual_fuse_proj: nn.Module | None = None
         self.ms_residual_stem_interactive_enabled = False
-        self.ms_residual_stem_interactive: StemCFInteractive2D | None = None
+        self.ms_residual_stem_interactive: nn.Module | None = None
         self.ms_residual_post_align_enabled = False
         self.ms_residual_post_aligner: DeformableAlign2D | None = None
         self.ms_residual_post_align_ref_detach = True
@@ -640,17 +658,31 @@ class HGNetv2(nn.Module):
                 fusion_mode = "add"
             elif fusion_mode in {"concat", "concat_proj", "concat_residual", "concat_residual_proj"}:
                 fusion_mode = "concat_proj"
+            elif fusion_mode in {"none", "identity", "skip", "no_injection", "stemcf_only"}:
+                fusion_mode = "none"
+            elif fusion_mode in {
+                "direct_proj",
+                "concat_proj_direct",
+                "concat_direct_proj",
+                "direct_fuse",
+                "fuse_proj",
+                "direct_concat_proj",
+            }:
+                fusion_mode = "direct_proj"
             else:
                 raise ValueError(
                     f"Unsupported ms_residual_stem.fusion_mode={fusion_mode} "
-                    "(supported: add|concat_proj)"
+                    "(supported: add|concat_proj|direct_proj|none)"
                 )
             self.ms_residual_fusion_mode = fusion_mode
-            if self.ms_residual_fusion_mode == "concat_proj":
+            if self.ms_residual_fusion_mode in {"concat_proj", "direct_proj"}:
                 self.ms_residual_fuse_proj = nn.Conv2d(c2_in_channels * 2, c2_in_channels, kernel_size=1, bias=True)
-                nn.init.constant_(self.ms_residual_fuse_proj.weight, 0.0)
-                if self.ms_residual_fuse_proj.bias is not None:
-                    nn.init.constant_(self.ms_residual_fuse_proj.bias, 0.0)
+                if self.ms_residual_fusion_mode == "concat_proj":
+                    nn.init.constant_(self.ms_residual_fuse_proj.weight, 0.0)
+                    if self.ms_residual_fuse_proj.bias is not None:
+                        nn.init.constant_(self.ms_residual_fuse_proj.bias, 0.0)
+                else:
+                    _init_main_identity_concat_proj(self.ms_residual_fuse_proj, c2_in_channels)
 
             stem_interactive_cfg_raw = ms_residual_stem_cfg.get(
                 "stem_interactive",
@@ -665,35 +697,75 @@ class HGNetv2(nn.Module):
                 stem_interactive_cfg.get("enabled", stem_interactive_cfg.get("enable", False))
             )
             if self.ms_residual_stem_interactive_enabled:
-                self.ms_residual_stem_interactive = StemCFInteractive2D(
-                    in_channels=c2_in_channels,
-                    num_heads=int(_cfg_value(stem_interactive_cfg, "num_heads", 4)),
-                    num_points=int(_cfg_value(stem_interactive_cfg, "num_points", 4)),
-                    memory_detach=bool(
-                        stem_interactive_cfg.get(
-                            "memory_detach",
-                            stem_interactive_cfg.get("detach_memory", True),
-                        )
-                    ),
-                    ref_shift_enabled=bool(
-                        stem_interactive_cfg.get(
-                            "ref_shift_enabled",
-                            stem_interactive_cfg.get("support_ref_shift_enabled", True),
-                        )
-                    ),
-                    ref_shift_scale=float(
-                        _cfg_value(
-                            stem_interactive_cfg,
-                            "ref_shift_scale",
-                            _cfg_value(stem_interactive_cfg, "support_ref_shift_scale", 0.02),
-                        )
-                    ),
-                    delta_hidden_channels=int(
-                        _cfg_value(stem_interactive_cfg, "delta_hidden_channels", c2_in_channels)
-                    ),
-                    scale_init=float(_cfg_value(stem_interactive_cfg, "scale_init", 0.01)),
-                    scale_per_channel=bool(stem_interactive_cfg.get("scale_per_channel", True)),
+                stem_interactive_type = str(
+                    stem_interactive_cfg.get(
+                        "type",
+                        stem_interactive_cfg.get("interaction_type", stem_interactive_cfg.get("module_type", "deformable")),
+                    )
+                    or "deformable"
+                ).strip().lower()
+                memory_detach = bool(
+                    stem_interactive_cfg.get(
+                        "memory_detach",
+                        stem_interactive_cfg.get("detach_memory", True),
+                    )
                 )
+                if stem_interactive_type in {
+                    "deformable",
+                    "deformable_cross_attention",
+                    "deformable_cross_attn",
+                    "stemcf",
+                    "stem_cf",
+                    "cf",
+                    "cf_interactive",
+                }:
+                    self.ms_residual_stem_interactive = StemCFInteractive2D(
+                        in_channels=c2_in_channels,
+                        num_heads=int(_cfg_value(stem_interactive_cfg, "num_heads", 4)),
+                        num_points=int(_cfg_value(stem_interactive_cfg, "num_points", 4)),
+                        memory_detach=memory_detach,
+                        ref_shift_enabled=bool(
+                            stem_interactive_cfg.get(
+                                "ref_shift_enabled",
+                                stem_interactive_cfg.get("support_ref_shift_enabled", True),
+                            )
+                        ),
+                        ref_shift_scale=float(
+                            _cfg_value(
+                                stem_interactive_cfg,
+                                "ref_shift_scale",
+                                _cfg_value(stem_interactive_cfg, "support_ref_shift_scale", 0.02),
+                            )
+                        ),
+                        delta_hidden_channels=int(
+                            _cfg_value(stem_interactive_cfg, "delta_hidden_channels", c2_in_channels)
+                        ),
+                        scale_init=float(_cfg_value(stem_interactive_cfg, "scale_init", 0.01)),
+                        scale_per_channel=bool(stem_interactive_cfg.get("scale_per_channel", True)),
+                    )
+                elif stem_interactive_type in {
+                    "cross_attention",
+                    "cross-attention",
+                    "cross_attention2d",
+                    "cross_attn",
+                    "attn",
+                    "attention",
+                }:
+                    self.ms_residual_stem_interactive = StemCrossAttention2D(
+                        in_channels=c2_in_channels,
+                        d_model=int(_cfg_value(stem_interactive_cfg, "d_model", c2_in_channels)),
+                        nhead=int(_cfg_value(stem_interactive_cfg, "nhead", _cfg_value(stem_interactive_cfg, "num_heads", 4))),
+                        kv_stride=int(_cfg_value(stem_interactive_cfg, "kv_stride", 8)),
+                        dropout=float(_cfg_value(stem_interactive_cfg, "dropout", 0.0)),
+                        alpha_init=float(_cfg_value(stem_interactive_cfg, "alpha_init", 0.0)),
+                        memory_detach=memory_detach,
+                    )
+                else:
+                    raise ValueError(
+                        "Unsupported ms_residual_stem.stem_interactive.type="
+                        f"{stem_interactive_type} "
+                        "(supported: deformable|cross_attention)"
+                    )
 
             post_align_cfg_raw = ms_residual_stem_cfg.get(
                 "post_align",
@@ -742,15 +814,16 @@ class HGNetv2(nn.Module):
                     affine_type=str(_cfg_value(post_align_cfg, "affine_type", "affine")),
                 )
 
-            residual_scale_init = float(
-                ms_residual_stem_cfg.get(
-                    "scale_init",
-                    1.0 if self.ms_residual_fusion_mode == "concat_proj" else 0.05,
+            if self.ms_residual_fusion_mode not in {"direct_proj", "none"}:
+                residual_scale_init = float(
+                    ms_residual_stem_cfg.get(
+                        "scale_init",
+                        1.0 if self.ms_residual_fusion_mode == "concat_proj" else 0.05,
+                    )
                 )
-            )
-            residual_scale_per_channel = bool(ms_residual_stem_cfg.get("scale_per_channel", True))
-            scale_shape = (1, c2_in_channels, 1, 1) if residual_scale_per_channel else (1,)
-            self.ms_residual_scale = nn.Parameter(torch.full(scale_shape, residual_scale_init))
+                residual_scale_per_channel = bool(ms_residual_stem_cfg.get("scale_per_channel", True))
+                scale_shape = (1, c2_in_channels, 1, 1) if residual_scale_per_channel else (1,)
+                self.ms_residual_scale = nn.Parameter(torch.full(scale_shape, residual_scale_init))
 
         # Optional CRGGA on MSI-only single-stream inputs.
         # - input_enabled: align raw MS bands before the original stem, keeping the stem unchanged.
@@ -1237,7 +1310,7 @@ class HGNetv2(nn.Module):
             pred = aligner.predict(ref_pred, residual)
             if aligner.affine_enabled:
                 offset_x, offset_y, attn_weights, affine_theta = pred
-                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                residual_aligned, sampled_features, attn_exp = aligner.deform_with_attention(
                     residual,
                     offset_x=offset_x,
                     offset_y=offset_y,
@@ -1251,16 +1324,24 @@ class HGNetv2(nn.Module):
                     residual_aligned,
                     attn_exp,
                     affine_theta=affine_theta,
+                    sampled_features=sampled_features,
                 )
             else:
                 offset_x, offset_y, attn_weights = pred
-                residual_aligned, _, attn_exp = aligner.deform_with_attention(
+                residual_aligned, sampled_features, attn_exp = aligner.deform_with_attention(
                     residual,
                     offset_x=offset_x,
                     offset_y=offset_y,
                     attention_weights=attn_weights,
                 )
-                loss_dict = aligner.loss_calculate(ref_pred, offset_x, offset_y, residual_aligned, attn_exp)
+                loss_dict = aligner.loss_calculate(
+                    ref_pred,
+                    offset_x,
+                    offset_y,
+                    residual_aligned,
+                    attn_exp,
+                    sampled_features=sampled_features,
+                )
 
             if self.ms_residual_post_align_loss_weight > 0 and "loss_deform_align" in loss_dict:
                 aux_losses["loss_deform_align"] = aux_losses.get("loss_deform_align", 0.0) + (
@@ -1327,7 +1408,7 @@ class HGNetv2(nn.Module):
                 x = out[0] if isinstance(out, tuple) else out
         else:
             x = self.stem(stem_input)
-            if self.ms_residual_stem_enabled and self.ms_residual_stem_branch is not None and self.ms_residual_scale is not None:
+            if self.ms_residual_stem_enabled and self.ms_residual_stem_branch is not None:
                 out = self.ms_residual_stem_branch(stem_input)
                 if self.training and isinstance(out, tuple) and len(out) == 2:
                     residual, stage_losses = out
@@ -1336,12 +1417,22 @@ class HGNetv2(nn.Module):
                     residual = out[0] if isinstance(out, tuple) else out
                 residual, aux_losses = self._apply_ms_residual_post_align(x, residual, aux_losses)
                 x, aux_losses = self._apply_ms_residual_stem_interactive(x, residual, aux_losses)
-                if self.ms_residual_fusion_mode == "concat_proj":
+                if self.ms_residual_fusion_mode == "none":
+                    pass
+                elif self.ms_residual_fusion_mode == "concat_proj":
                     if self.ms_residual_fuse_proj is None:
                         raise RuntimeError("Missing ms_residual_fuse_proj for concat_proj fusion")
+                    if self.ms_residual_scale is None:
+                        raise RuntimeError("Missing ms_residual_scale for concat_proj fusion")
                     delta = self.ms_residual_fuse_proj(torch.cat([x, residual], dim=1))
                     x = x + (self.ms_residual_scale * delta)
+                elif self.ms_residual_fusion_mode == "direct_proj":
+                    if self.ms_residual_fuse_proj is None:
+                        raise RuntimeError("Missing ms_residual_fuse_proj for direct_proj fusion")
+                    x = self.ms_residual_fuse_proj(torch.cat([x, residual], dim=1))
                 else:
+                    if self.ms_residual_scale is None:
+                        raise RuntimeError("Missing ms_residual_scale for add fusion")
                     x = x + (self.ms_residual_scale * residual)
         if self.eemsa_stem is not None:
             x = self.eemsa_stem(x)
