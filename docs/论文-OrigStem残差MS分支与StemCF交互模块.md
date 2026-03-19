@@ -11,7 +11,7 @@
 > - `SMFAM` 指 `Shallow Multispectral Feature Align Module`；
 > - `OrigStem Main Path` 指原始 HGNetv2 stem 主路径；
 > - `Residual MS Branch` 指旁路的显式 band-wise 残差多光谱分支；
-> - `FixedBandCMDA` 指固定锚点波段的单尺度可变形对齐与锚点感知融合模块；
+> - `FixedBandCMDA` 指锚点感知的单尺度可变形特征对齐与融合模块；
 > - `StemCF` 指 `StemCFInteractive2D`，即 C2/stem 尺度的单尺度 deformable cross interaction。
 
 对应实现：
@@ -433,7 +433,7 @@ flowchart TB
 
 ---
 
-## 6. 分支内部的 FixedBandCMDA：固定锚点的显式 band-wise 对齐与校正
+## 6. 分支内部的 FixedBandCMDA：显式 band-wise 特征的可变形对齐
 
 ### 6.1 动机：不用 canonical reference，而是直接选定一个真实波段做坐标系
 
