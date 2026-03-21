@@ -1,0 +1,35 @@
+# @package _global_
+
+# Stability-first relaunch for ASMF + ACAF + P2DBF + early-align.
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_acaf_p2dbf_earlyalign
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_acaf_p2dbf_earlyalign_stable
+  backbone_ms_residual_stem:
+    scale_init: 0.005
+    align:
+      num_keypoints: 4
+      offset_scale: 1.0
+      loss_weight: 0.005
+      loss_offset_weight: 0.002
+      loss_attn_entropy_weight: 0.0002
+    stem_interactive:
+      ref_shift_scale: 0.005
+      scale_init: 0.001
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_acaf_p2dbf_earlyalign_stable
+  batch_size: 4
+  lr: 0.0003
+  clip_max_norm: 0.05
+  warmup_iter: 400
+  warmup_max_epochs: 3
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.00008
+    - params: '^(?=.*(?:norm|bn)).*$'
+      lr: 0.0003
+      weight_decay: 0.0
+

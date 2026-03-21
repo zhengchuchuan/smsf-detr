@@ -10,6 +10,23 @@ defaults:
 
 model:
   model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_acaf_p2dbf_earlyalign
+  rtdetrv4_config: engines/models/rtmsfdetr/rtdetrv4/configs/rtv4/rtv4_hgnetv2_m_coco_acaf_p2dbf_internal_stable_moda.yml
+  backbone_eemsa:
+    norm: gn
+  backbone_ms_residual_stem:
+    scale_init: 0.01
+    align:
+      num_keypoints: 4
+      offset_scale: 1.0
+      loss_weight: 0.005
+      loss_offset_weight: 0.002
+      loss_attn_entropy_weight: 0.0005
+    stem_interactive:
+      ref_shift_scale: 0.005
+      scale_init: 0.001
 
 train:
   model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_eemsa_acaf_p2dbf_earlyalign
+  amp: true
+  batch_size: 2
+  grad_accum_steps: 2

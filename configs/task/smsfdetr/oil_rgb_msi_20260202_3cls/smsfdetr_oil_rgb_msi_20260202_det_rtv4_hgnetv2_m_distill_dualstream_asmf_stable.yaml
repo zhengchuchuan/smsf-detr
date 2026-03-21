@@ -1,0 +1,15 @@
+# @package _global_
+
+# Stability-preserving baseline for contrast comparison.
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_stable
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_stable
+  amp: true
+  batch_size: 8
+

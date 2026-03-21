@@ -9,6 +9,21 @@ defaults:
 
 model:
   model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_earlyalign
+  backbone_eemsa:
+    norm: gn
+  backbone_ms_residual_stem:
+    scale_init: 0.01
+    align:
+      num_keypoints: 5
+      offset_scale: 1.5
+      loss_weight: 0.01
+      loss_offset_weight: 0.005
+      loss_attn_entropy_weight: 0.0005
+    stem_interactive:
+      ref_shift_scale: 0.01
+      scale_init: 0.002
 
 train:
   model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_eemsa_earlyalign
+  amp: true
+  batch_size: 4

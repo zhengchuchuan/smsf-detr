@@ -1,0 +1,43 @@
+# @package _global_
+
+# Best-effort stable relaunch for the heaviest contrast combo.
+# This keeps the structure but further softens EEMSA and early-align, and uses
+# a stability-oriented optimizer recipe.
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_acaf_p2dbf_earlyalign
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_acaf_p2dbf_earlyalign_stable
+  backbone_eemsa:
+    locations: [stage2, stage3, stage4]
+    ratio: 0.1875
+    use_eca: false
+    alpha_init: 0.05
+  backbone_ms_residual_stem:
+    scale_init: 0.003
+    align:
+      num_keypoints: 4
+      offset_scale: 0.75
+      loss_weight: 0.0025
+      loss_offset_weight: 0.001
+      loss_attn_entropy_weight: 0.0002
+    stem_interactive:
+      ref_shift_scale: 0.003
+      scale_init: 0.0005
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_eemsa_acaf_p2dbf_earlyalign_stable
+  batch_size: 2
+  grad_accum_steps: 2
+  lr: 0.00025
+  clip_max_norm: 0.05
+  warmup_iter: 400
+  warmup_max_epochs: 3
+  optimizer_param_groups:
+    - params: '^(?=.*backbone)(?!.*(?:norm|bn)).*$'
+      lr: 0.00006
+    - params: '^(?=.*(?:norm|bn)).*$'
+      lr: 0.00025
+      weight_decay: 0.0
+

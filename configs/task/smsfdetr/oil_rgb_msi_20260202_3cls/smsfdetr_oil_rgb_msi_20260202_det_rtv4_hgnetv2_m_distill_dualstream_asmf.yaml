@@ -18,6 +18,7 @@ model:
 
 train:
   model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf
+  amp: true
   batch_size: 8
   epochs: 100
   num_classes: 3

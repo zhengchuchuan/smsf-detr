@@ -1,0 +1,16 @@
+# @package _global_
+
+# Recommended stable config for oil_rgb_msi_20260202_3cls.
+# Historical outputs show ASMF + EEMSA is the best trade-off between stability and accuracy
+# on this dataset, while ACAF/P2DBF-based variants frequently collapse.
+defaults:
+  - /task/smsfdetr/oil_rgb_msi_20260202_3cls/smsfdetr_oil_rgb_msi_20260202_det_rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa
+  - _self_
+
+model:
+  model_alias: rtv4_hgnetv2_m_distill_dualstream_asmf_eemsa_stable
+
+train:
+  model_alias: rtv4_hgnetv2_m_distill_det_dualstream_asmf_eemsa_stable
+  amp: true
+  batch_size: 8
